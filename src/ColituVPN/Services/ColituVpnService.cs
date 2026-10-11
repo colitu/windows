@@ -91,6 +91,23 @@ public sealed class ColituVpnService
 
     /// <summary>A manual server where every transport failed: the error offers "Try the fastest server".</summary>
     public bool OfferFastestServer { get; private set; }
+    /// <summary>
+    /// Environment.TickCount64 of the first missed watcher round of the current outage; 0 none, -1 already
+    /// reported as detection_ms.
+    /// </summary>
+    private long _firstMissTick;
+    /// <summary>The detection time (ms) the watcher reported for the current outage; null when none.</summary>
+    private int? _lastDetectMs;
+    // Context of the open recovery and of the current connect attempt, for the Adaptive Connect events.
+    private string? _recNode;
+    private string? _recProtocol;
+    private string _recReason = "other";
+    private int? _recDetectMs;
+    private string? _lastDropReason;
+    private string? _pendingDropReason;
+    private string? _attemptNodeId;
+    private string? _attemptProtocol;
+    private bool _connectFallback;
     /// <summary>Health checks in a row that carried no traffic through the tunnel.</summary>
     private int _failedChecks;
     /// <summary>DNS checks in a row the tunnel's resolver did not answer.</summary>
@@ -120,6 +137,7 @@ public sealed class ColituVpnService
 
     private ColituVpnService()
     {
+        ColituInsights.Instance.Touch();
         LoadState();
         // The warm spare goes into the generated core config before the core starts.
         CoreConfigHandler.ClientConfigPostProcessor = PostProcessConfig;
@@ -217,14 +235,66 @@ public sealed class ColituVpnService
     /// </summary>
     public async Task<Dictionary<string, int>> MeasurePingsAsync(IReadOnlyCollection<ColituVpnServer> servers)
     {
+        if (Status is ColituVpnStatus.Connected or ColituVpnStatus.Reconnecting && ColituNetwork.PhysicalInterfaceIndex() is not > 0)
+        {
+            // With the tunnel up a probe that cannot be pinned to the physical adapter goes through the
+            // tunnel and measures the distance to the exit, not to the server: the exit's own country
+            // would look closest. Keep the old numbers.
+            return [];
+        }
         var network = CurrentNetworkKey();
         var measured = await ColituLatency.MeasureAllAsync(servers);
         var at = DateTimeOffset.UtcNow;
         foreach (var server in servers.Where(ColituLatency.CanProbe))
         {
             _pings[server.Id!] = new ColituPingSample(measured.TryGetValue(server.Id!, out var ms) ? ms : null, at, network);
+            // Every measurement is a probe event (the last one of each hour per node is kept); routes are not nodes.
+            if (!server.IsMultihop)
+            {
+                ColituInsights.Instance.AddEvent(new ColituAcEvent
+                {
+                    Kind = "probe",
+                    NodeId = server.Id,
+                    Outcome = measured.ContainsKey(server.Id!) ? "ok" : "fail",
+                    Ms = measured.TryGetValue(server.Id!, out var probeMs) ? probeMs : null
+                });
+            }
         }
         return measured;
+    }
+
+    /// <summary>
+    /// Automatic mode ranks the servers by ping, and a ping is only believed for ten minutes on the
+    /// network it was taken on. After a network change or a long pause most of them are stale and the
+    /// order silently fell back to the panel's: a far server could come first. Measure again (at most
+    /// 4 s) before ranking, outside the tunnel and while nothing blocks the probes.
+    /// </summary>
+    private async Task EnsureFreshPingsAsync(CancellationToken token)
+    {
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var candidates = _lastServers.Where(item => !item.IsMultihop && ColituLatency.CanProbe(item)).ToList();
+            if (candidates.Count == 0)
+            {
+                return;
+            }
+            var fresh = candidates.Count(item => _pings.TryGetValue(item.Id!, out var sample) && sample.IsFresh(_networkKey, now));
+            if (fresh * 2 >= candidates.Count)
+            {
+                return;
+            }
+            LogConnection($"Pings are stale on this network ({fresh}/{candidates.Count} fresh); measuring before choosing the best server");
+            await MeasurePingsAsync(candidates).WaitAsync(TimeSpan.FromSeconds(4), token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogConnection($"Measuring pings before connecting failed: {ex.Message}");
+        }
     }
 
     /// <summary>"&lt;link&gt;|&lt;client_network&gt;" of the network this PC is on now; the link kind is looked up at most every 5 s.</summary>
@@ -390,7 +460,23 @@ public sealed class ColituVpnService
         try
         {
             _userDisconnected = false;
-            await ConnectCoreAsync(server);
+            var insightWatch = Stopwatch.StartNew();
+            try
+            {
+                await ConnectCoreAsync(server);
+            }
+            catch (ColituConnectException ex) when (!ex.Offline)
+            {
+                // A real failure (not "this computer has no internet"); plan and paused-device errors are not counted.
+                ColituInsights.Instance.ConnectFinished(false, insightWatch.ElapsedMilliseconds);
+                throw;
+            }
+            if (Status == ColituVpnStatus.Connected)
+            {
+                // A cancelled attempt ends Disconnected and counts as nothing.
+                ColituInsights.Instance.ConnectFinished(true, insightWatch.ElapsedMilliseconds);
+                ColituInsights.Instance.AddFeatures(ColituInsightSpec.FeaturesOf(Preferences, manualServer: server != null, multihop: ConnectedServer is { IsMultihop: true }));
+            }
         }
         finally
         {
@@ -407,6 +493,7 @@ public sealed class ColituVpnService
         _failedChecks = 0;
         _failedDnsChecks = 0;
         _dnsCheckWorks = false;
+        _firstMissTick = 0;
         _offlineNoticeShown = false;
         _offlineVerdicts = 0;
         _waitingForNetwork = false;
@@ -463,6 +550,9 @@ public sealed class ColituVpnService
         // carries no traffic on this network. A server the user picked is never switched.
         var automatic = server == null;
         var connectWatch = Stopwatch.StartNew();
+        _connectFallback = false;
+        _attemptNodeId = NodeIdOf(server);
+        _attemptProtocol = null;
 
         try
         {
@@ -480,6 +570,10 @@ public sealed class ColituVpnService
                 _otherVpnWarned = true;
                 LogConnection($"Another VPN adapter holds a default route: {other}");
                 Notice?.Invoke("warn.otherVpn");
+            }
+            if (automatic && !quick && !KillSwitchEngaged)
+            {
+                await EnsureFreshPingsAsync(token);
             }
             if (Preferences.KillSwitchEnabled)
             {
@@ -499,6 +593,10 @@ public sealed class ColituVpnService
             }
 
             var ranked = automatic ? RankedServers() : [];
+            if (automatic)
+            {
+                EmitChoiceEvent(ranked);
+            }
             if (automatic)
             {
                 LogConnection(ranked.Count == 0
@@ -534,6 +632,7 @@ public sealed class ColituVpnService
                     : server;
                 if (round > 1)
                 {
+                    _connectFallback = true;
                     ConnectStage = "connect.tryingOther";
                     StatusChanged?.Invoke(Status);
                     LogConnection($"Trying another server ({(viaRecovery ? $"recovery set, id={recoveryEnvelope!.Server?.Id}" : target == null ? "the panel chooses" : $"id={target.Id}")}, {connectWatch.ElapsedMilliseconds} ms into the connect)");
@@ -580,6 +679,7 @@ public sealed class ColituVpnService
 
                 connected = FindServer(config.ServerId) ?? config.Server ?? target;
                 var connectedId = config.ServerId ?? connected?.Id;
+                _attemptNodeId = connected is { IsMultihop: true } ? null : ColituAcSpec.NodeId(connectedId) ?? _attemptNodeId;
                 try
                 {
                     var profiles = await ImportConfigAsync(config, connected);
@@ -684,13 +784,19 @@ public sealed class ColituVpnService
             if (connected is { IsMultihop: false, Id.Length: > 0 })
             {
                 var now = DateTimeOffset.UtcNow;
-                _adaptive.RememberGoodServer(_networkKey, connected.Id, now);
+                // A server the user picked by hand is not "the one that works best here": only the automatic
+                // choice (and a recovery) makes a server lead the next automatic order.
+                if (automatic)
+                {
+                    _adaptive.RememberGoodServer(_networkKey, connected.Id, now);
+                }
                 _adaptive.RememberGoodTransport(_networkKey, connected.Id, _activeTransport, now);
             }
             ResetHealthChecks();
             _killSwitchHeldFromPreviousRun = false;
             await ApplyKillSwitchForConnectedTunnelAsync();
             SetStatus(ColituVpnStatus.Connected);
+            EmitConnectEvent(true, connectWatch.ElapsedMilliseconds, automatic, server, null);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -712,6 +818,10 @@ public sealed class ColituVpnService
             OfferFastestServer = !automatic && server is not null && IsServerFailure(ex);
             LastError = FriendlyConnectionError(ex);
             LogConnection($"Connection failed: {ex}");
+            if (!(ex is ColituApiException planError && IsPlanError(planError)) && FindDevicePaused(ex) == null)
+            {
+                EmitConnectEvent(false, connectWatch.ElapsedMilliseconds, automatic, server, ex);
+            }
             // Engaged by this attempt (not by a lost tunnel): a failed manual connect must not
             // leave the computer offline.
             if (killSwitchEngagedHere || IsDevicePaused(ex))
@@ -1318,6 +1428,7 @@ public sealed class ColituVpnService
     public async Task DisconnectAsync()
     {
         _userDisconnected = true;
+        ColituInsights.Instance.AbandonRecovery();
         _connectCts?.Cancel();
         await _connectionLock.WaitAsync();
         try
@@ -1694,6 +1805,28 @@ public sealed class ColituVpnService
 
     private bool CanWatch() => CanHeal();
 
+    /// <summary>detection_ms: from the first missed round of an outage to the watcher's verdict that the path is dead.</summary>
+    private void TrackDetection(bool missWhileOnline, bool healthy, ColituWatchAction action, long roundStarted)
+    {
+        if (healthy)
+        {
+            _firstMissTick = 0;
+            _lastDetectMs = null;
+            return;
+        }
+        if (missWhileOnline && _firstMissTick == 0)
+        {
+            _firstMissTick = roundStarted;
+        }
+        if (action is ColituWatchAction.PrimaryDead or ColituWatchAction.Reconnect or ColituWatchAction.SpareCarries && _firstMissTick > 0)
+        {
+            var detected = Environment.TickCount64 - _firstMissTick;
+            ColituInsights.Instance.Observe("detection_ms", detected);
+            _lastDetectMs = (int)Math.Clamp(detected, 0, ColituAcSpec.MaxMs);
+            _firstMissTick = -1;
+        }
+    }
+
     private async Task OnWatchHealthyAsync(long now)
     {
         _failedChecks = 0;
@@ -1774,6 +1907,7 @@ public sealed class ColituVpnService
             return;
         }
         _lastTrafficCheckAt = now;
+        var roundStarted = Environment.TickCount64;
         var (port, credentials) = TunnelCheckTarget();
         var verify = _verifyInbound;
         var normalTask = ProbeThroughLocalProxyAsync(port, 1, roundTimeout: WatchProbeTimeout, credentials: credentials);
@@ -1792,6 +1926,7 @@ public sealed class ColituVpnService
             return;
         }
         var action = _watch.Round(primary?.Success, normal.Success, online);
+        TrackDetection(miss && online, !miss, action, roundStarted);
         var detail = primary is { Success: false } ? primary.Detail : normal.Detail;
         if (miss && action == ColituWatchAction.None)
         {
@@ -1833,6 +1968,18 @@ public sealed class ColituVpnService
         {
             return;
         }
+        ColituInsights.Instance.AddEvent(new ColituAcEvent
+        {
+            Kind = "recovery",
+            NodeId = NodeIdOf(ConnectedServer),
+            Protocol = _activeTransport,
+            ToProtocol = plan.Protocol,
+            Outcome = "ok",
+            Reason = "timeout",
+            Ms = _lastDetectMs ?? 0,
+            DetectMs = _lastDetectMs ?? 0,
+            Spare = true
+        });
         var shortMark = _adaptive.MarkMidSessionStall(_networkKey, serverId, _activeTransport, now, provisional: true);
         LogConnection($"{serverId}/{_activeTransport} is dead, the warm spare {plan.ServerId}/{plan.Protocol} carries the traffic; it leads the next connect{(shortMark ? " (proven here: short penalty)" : "")}");
         if (plan.ServerId is { Length: > 0 } spareServer)
@@ -2030,7 +2177,7 @@ public sealed class ColituVpnService
         var shortMark = _adaptive.MarkMidSessionStall(_networkKey, server?.Id, "hysteria2", DateTimeOffset.UtcNow, provisional: false);
         SaveState();
         LogConnection($"Hysteria2 stalled mid-session ({HysteriaStallChecks} checks, last: {detail}); demoted on this server and network for {(shortMark ? "90 s (proven here: short penalty)" : "6 hours")}, switching to the next transport");
-        await SwitchTransportAsync(server);
+        await SwitchTransportAsync(server, detail);
     }
 
     /// <summary>At most one automatic transport switch per <see cref="TransportSwitchMinInterval"/>.</summary>
@@ -2042,7 +2189,7 @@ public sealed class ColituVpnService
     /// the stall mark puts the demoted transport last. When that fails, the usual automatic
     /// reconnect takes over (with its notices: the tunnel is down then).
     /// </summary>
-    private async Task SwitchTransportAsync(ColituVpnServer? server)
+    private async Task SwitchTransportAsync(ColituVpnServer? server, string? detail = null)
     {
         if (Interlocked.Exchange(ref _autoReconnectBusy, 1) == 1)
         {
@@ -2054,6 +2201,8 @@ public sealed class ColituVpnService
             : server is { IsMultihop: false, Id.Length: > 0 } ? server
             : SelectedServer ?? FindServer(_session.SelectedServerId);
         var failed = false;
+        var transportBefore = _activeTransport;
+        StartRecovery(detail ?? "no traffic");
         _autoReconnecting = true;
         try
         {
@@ -2089,6 +2238,14 @@ public sealed class ColituVpnService
             _autoReconnecting = false;
             Interlocked.Exchange(ref _autoReconnectBusy, 0);
         }
+        if (!_userDisconnected)
+        {
+            NoteProtocolSwitch(transportBefore, _activeTransport, !failed);
+            if (!failed)
+            {
+                CompleteRecovery(true);
+            }
+        }
         if (failed && !_userDisconnected)
         {
             await OnTunnelLostAsync(fresh: true);
@@ -2120,6 +2277,12 @@ public sealed class ColituVpnService
         }
         _waitingForNetwork = false;
         LogConnection(reason);
+        StartRecovery(coreStopped ? null : reason, coreStopped ? "core_crash" : null);
+        _pendingDropReason = coreStopped ? "core_crash" : ColituAcSpec.ReasonOfText(reason);
+        if (coreStopped)
+        {
+            NoteDrop("core_crash");
+        }
         if (!coreStopped)
         {
             var path = await DiagnosePathAsync();
@@ -2153,6 +2316,7 @@ public sealed class ColituVpnService
                 // Not the transport's fault: no stall mark, and fresh settings from the panel
                 // (which can move to a healthy node) instead of the cached ones for this server.
                 LogConnection("The server does not answer outside the tunnel either; reconnecting");
+                _pendingDropReason = "timeout";
                 await OnTunnelLostAsync(fresh: true);
                 return;
             }
@@ -2164,6 +2328,14 @@ public sealed class ColituVpnService
         }
         if (await TryRestartCoreAsync(reason) || _userDisconnected)
         {
+            if (_userDisconnected)
+            {
+                ColituInsights.Instance.AbandonRecovery();
+            }
+            else if (Status == ColituVpnStatus.Connected)
+            {
+                CompleteRecovery(true);
+            }
             return;
         }
         if (_activeTransport != null)
@@ -2485,6 +2657,7 @@ public sealed class ColituVpnService
             _networkKey = CurrentNetworkKey();
             if (!await TryRestartCoreAsync("network changed", quick: true) && !_userDisconnected)
             {
+                _pendingDropReason = "network_change";
                 await OnTunnelLostAsync();
             }
         }
@@ -2505,6 +2678,9 @@ public sealed class ColituVpnService
         {
             return;
         }
+        var dropReason = _pendingDropReason ?? "other";
+        _pendingDropReason = null;
+        NoteDrop(dropReason);
         if (Preferences.KillSwitchEnabled && await EngageKillSwitchAsync("tunnel lost"))
         {
             Notice?.Invoke("info.killSwitch");
@@ -2544,6 +2720,140 @@ public sealed class ColituVpnService
         }
     }
 
+    /// <summary>The tunnel is back after a recovery: recovery_ms, and a protocol switch when another transport carries it now.</summary>
+    private void FinishRecovery(string? transportBefore)
+    {
+        CompleteRecovery(true);
+        if (transportBefore != null && _activeTransport != null
+            && !string.Equals(transportBefore, _activeTransport, StringComparison.OrdinalIgnoreCase))
+        {
+            NoteProtocolSwitch(transportBefore, _activeTransport, true);
+        }
+    }
+
+    // ── Telemetry events (POST /client/ac-events): the counters and the events share these hooks ──
+    /// <summary>The panel's node id of a server (lower-case UUID); null for a multihop route (its id is not a node).</summary>
+    private static string? NodeIdOf(ColituVpnServer? server) =>
+        server is { IsMultihop: false } ? ColituAcSpec.NodeId(server.Id) : null;
+
+    /// <summary>The tunnel was lost without the user asking: one counter and one drop event per outage.</summary>
+    private void NoteDrop(string reason)
+    {
+        _lastDropReason = reason;
+        if (!ColituInsights.Instance.UnexpectedDisconnect())
+        {
+            return;
+        }
+        var minutes = ConnectedAt is { } at ? (int)Math.Max(0, (DateTimeOffset.Now - at).TotalMinutes) : 0;
+        ColituInsights.Instance.AddEvent(new ColituAcEvent
+        {
+            Kind = "drop",
+            NodeId = NodeIdOf(ConnectedServer),
+            Protocol = _activeTransport,
+            Reason = reason,
+            Minutes = minutes
+        });
+    }
+
+    /// <summary>A recovery starts (when none is open): remembers what failed, for the recovery event at its end.</summary>
+    private void StartRecovery(string? failureText, string? reason = null)
+    {
+        if (!ColituInsights.Instance.BeginRecovery())
+        {
+            return;
+        }
+        _recNode = NodeIdOf(ConnectedServer);
+        _recProtocol = _activeTransport;
+        _recReason = reason ?? (failureText != null ? ColituAcSpec.ReasonOfText(failureText) : _lastDropReason ?? "other");
+        _recDetectMs = _lastDetectMs;
+    }
+
+    /// <summary>The recovery ended (working again, or given up): recovery counters, recovery_ms and the recovery event.</summary>
+    private void CompleteRecovery(bool success, bool spare = false)
+    {
+        var elapsed = ColituInsights.Instance.EndRecovery(success);
+        if (elapsed == null)
+        {
+            return;
+        }
+        ColituInsights.Instance.AddEvent(new ColituAcEvent
+        {
+            Kind = "recovery",
+            NodeId = _recNode ?? NodeIdOf(ConnectedServer),
+            Protocol = _recProtocol,
+            ToProtocol = _activeTransport,
+            Outcome = success ? "ok" : "fail",
+            Reason = _recReason,
+            Ms = ColituAcSpec.ClampMs(elapsed),
+            DetectMs = _recDetectMs,
+            Spare = spare
+        });
+        _recNode = _recProtocol = null;
+        _recDetectMs = null;
+    }
+
+    private void NoteProtocolSwitch(string? from, string? to, bool success)
+    {
+        var flap = ColituInsights.Instance.ProtocolSwitch(from, to, success, DateTimeOffset.UtcNow);
+        ColituInsights.Instance.AddEvent(new ColituAcEvent
+        {
+            Kind = "switch",
+            Protocol = from,
+            ToProtocol = to,
+            Outcome = success ? "ok" : "fail",
+            Flap = flap
+        });
+    }
+
+    /// <summary>
+    /// One event per connection attempt, of any mode: the manual pick of a server too.
+    /// first_try: the first server and transport that were tried carried traffic, without a fallback.
+    /// </summary>
+    private void EmitConnectEvent(bool success, long ms, bool automatic, ColituVpnServer? target, Exception? failure)
+    {
+        var reason = failure == null ? null : ColituAcSpec.ReasonOf(failure);
+        if (reason == "other" && failure is ColituConnectException { InnerException: null })
+        {
+            // Every transport answered nothing: the only thing known is that no traffic came back.
+            reason = "timeout";
+        }
+        ColituInsights.Instance.AddEvent(new ColituAcEvent
+        {
+            Kind = "connect",
+            NodeId = (success ? NodeIdOf(ConnectedServer) : null) ?? _attemptNodeId ?? NodeIdOf(target),
+            Protocol = success ? _activeTransport : _attemptProtocol,
+            Outcome = success ? "ok" : "fail",
+            Reason = reason,
+            Ms = ColituAcSpec.ClampMs(ms),
+            FirstTry = success && !_connectFallback,
+            Mode = automatic ? "auto" : "manual"
+        });
+    }
+
+    /// <summary>Automatic mode's choice against the best measured candidate (once per automatic connect).</summary>
+    private void EmitChoiceEvent(IReadOnlyList<ColituVpnServer> ranked)
+    {
+        if (ColituAdaptiveConnect.ChoiceOf(ranked, _pings, _networkKey, DateTimeOffset.UtcNow) is not { } choice)
+        {
+            return;
+        }
+        ColituInsights.Instance.AddEvent(new ColituAcEvent
+        {
+            Kind = "choice",
+            NodeId = choice.ChosenId,
+            Ms = choice.ChosenMs,
+            BestNodeId = choice.BestId,
+            BestMs = choice.BestMs,
+            Mode = "auto"
+        });
+    }
+
+    /// <summary>The panel's network token (empty when none), for the events.</summary>
+    internal string InsightNetworkToken => CurrentNetworkToken() ?? "";
+
+    /// <summary>wifi, ethernet, cellular, other.</summary>
+    internal string InsightNetworkType => ColituAcSpec.NetworkType(_linkKind ?? ColituNetwork.LinkKind());
+
     private async Task AutoReconnectAsync(bool fresh = false)
     {
         if (Interlocked.Exchange(ref _autoReconnectBusy, 1) == 1)
@@ -2551,6 +2861,8 @@ public sealed class ColituVpnService
             return;
         }
         _autoReconnecting = true;
+        var transportBefore = _activeTransport;
+        StartRecovery(null);
         try
         {
             for (var attempt = 1; attempt <= 3 && !_userDisconnected; attempt++)
@@ -2562,6 +2874,7 @@ public sealed class ColituVpnService
                     if (Status == ColituVpnStatus.Connected)
                     {
                         Notice?.Invoke("info.reconnected");
+                        FinishRecovery(transportBefore);
                     }
                     return;
                 }
@@ -2591,6 +2904,7 @@ public sealed class ColituVpnService
                 return;
             }
 
+            CompleteRecovery(false);
             LastError = Loc.I["err.reconnectFailed"];
             SetStatus(ColituVpnStatus.Error);
             Notice?.Invoke("err.reconnectFailed");
@@ -3323,6 +3637,14 @@ public sealed class ColituVpnService
         foreach (var (protocol, ms) in await Task.WhenAll(tasks))
         {
             result[protocol] = ms;
+            ColituInsights.Instance.AddEvent(new ColituAcEvent
+            {
+                Kind = "probe",
+                NodeId = _attemptNodeId,
+                Protocol = protocol,
+                Outcome = ms >= 0 ? "ok" : "fail",
+                Ms = ms >= 0 ? ms : null
+            });
         }
         return result;
     }
@@ -3442,6 +3764,7 @@ public sealed class ColituVpnService
                 {
                     throw new InvalidOperationException("Imported server could not be selected as default.");
                 }
+                _attemptProtocol = candidate.Protocol;
                 LogConnection($"Trying transport {candidate.Protocol}: index={profile.IndexId}, address={profile.Address}:{profile.Port}");
 
                 try
@@ -3472,6 +3795,7 @@ public sealed class ColituVpnService
                             credentials: new NetworkCredential(verify.User, verify.Password))).Success;
                     }
                     var outcome = ColituParallelConnect.Decide(probe.Success, spareProbe?.Success, graceOk);
+                    ColituInsights.Instance.FunctionalCheck(outcome == ColituParallelOutcome.PrimaryWins);
                     if (plan != null && spareProbe != null)
                     {
                         var winner = outcome switch
@@ -3485,6 +3809,10 @@ public sealed class ColituVpnService
                     observations.Add(new ColituProtocolObservation { Protocol = candidate.Protocol, Reachable = probe.Success || graceOk, LatencyMs = probe.LatencyMs });
                     if (outcome == ColituParallelOutcome.PrimaryWins)
                     {
+                        if (index > 0)
+                        {
+                            _connectFallback = true;
+                        }
                         _activeTransport = candidate.Protocol;
                         return;
                     }

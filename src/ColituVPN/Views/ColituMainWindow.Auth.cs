@@ -112,7 +112,7 @@ public partial class ColituMainWindow
         try
         {
             var result = _registerMode
-                ? await _auth.RegisterAsync("", email, password)
+                ? await _auth.RegisterAsync("", email, password, ColituReferral.NormalizeInvite(InviteBox.Text))
                 : await _auth.LoginAsync(email, password);
             if (result.RequiresMfa)
             {
@@ -130,6 +130,7 @@ public partial class ColituMainWindow
             PasswordBox.Clear();
             PasswordPlainBox.Clear();
             PasswordRepeatBox.Clear();
+            InviteBox.Clear();
             if (result.RequiresEmailVerification)
             {
                 ShowVerify(codeJustSent: true);
@@ -174,6 +175,10 @@ public partial class ColituMainWindow
         {
             return Loc.I["auth.err.mismatch"];
         }
+        if (_registerMode && ColituReferral.IsInvalidInvite(InviteBox.Text))
+        {
+            return Loc.I["auth.err.invite"];
+        }
         if (_registerMode && TermsCheck.IsChecked != true)
         {
             return Loc.I["auth.err.terms"];
@@ -202,7 +207,7 @@ public partial class ColituMainWindow
         _authBusy = busy;
         AuthSubmitButton.IsEnabled = !busy;
         AuthSpinner.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-        EmailBox.IsEnabled = PasswordBox.IsEnabled = PasswordPlainBox.IsEnabled = PasswordRepeatBox.IsEnabled = !busy;
+        EmailBox.IsEnabled = PasswordBox.IsEnabled = PasswordPlainBox.IsEnabled = PasswordRepeatBox.IsEnabled = InviteBox.IsEnabled = !busy;
         AuthLoginTab.IsEnabled = AuthRegisterTab.IsEnabled = !busy;
         ForgotButton.IsEnabled = !busy;
     }

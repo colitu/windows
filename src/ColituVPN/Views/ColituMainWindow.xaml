@@ -310,6 +310,11 @@
                                 <StackPanel x:Name="RegisterFields" Visibility="Collapsed">
                                     <TextBlock Margin="2,16,0,8" Style="{StaticResource FieldLabel}" Text="{s:T auth.passwordRepeat}" />
                                     <PasswordBox x:Name="PasswordRepeatBox" MaxLength="256" KeyDown="AuthField_KeyDown" Style="{StaticResource PasswordField}" />
+                                    <Button x:Name="InviteToggleButton" Margin="0,14,0,0" HorizontalAlignment="Left" Click="InviteToggle_Click" Content="{s:T auth.invite.toggle}" Style="{StaticResource LinkButton}" />
+                                    <StackPanel x:Name="InviteFields" Visibility="Collapsed">
+                                        <TextBlock Margin="2,16,0,8" Style="{StaticResource FieldLabel}" Text="{s:T auth.invite.label}" />
+                                        <TextBox x:Name="InviteBox" MaxLength="200" KeyDown="AuthField_KeyDown" Style="{StaticResource Field}" Tag="{s:T auth.invite.hint}" />
+                                    </StackPanel>
                                     <CheckBox x:Name="TermsCheck" Margin="2,18,0,0" Style="{StaticResource FieldCheck}">
                                         <TextBlock TextWrapping="Wrap">
                                             <Hyperlink Click="TermsLink_Click" Foreground="{StaticResource LilacBrush}" TextDecorations="{x:Null}"><Run Text="{s:T auth.terms}" /></Hyperlink>
@@ -906,6 +911,9 @@
                                             <Button Height="42" Margin="0,0,10,10" Padding="18,0" Click="ManualConfig_Click" Style="{StaticResource SecondaryButton}">
                                                 <TextBlock FontSize="13.5" Text="{s:T account.manualConfig}" />
                                             </Button>
+                                            <Button Height="42" Margin="0,0,10,10" Padding="18,0" Click="Invite_Click" Style="{StaticResource SecondaryButton}">
+                                                <TextBlock FontSize="13.5" Text="{s:T invite.entry}" />
+                                            </Button>
                                             <Button Height="42" Margin="0,0,10,10" Padding="18,0" Click="SignOut_Click" Style="{StaticResource DangerButton}">
                                                 <TextBlock FontSize="13.5" Text="{s:T account.signOut}" />
                                             </Button>
@@ -974,6 +982,129 @@
                                 </StackPanel>
                             </Border>
                         </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Invite a friend: opens from the Account page, no tab of its own. -->
+                <ScrollViewer x:Name="InvitePage" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                    <StackPanel Margin="44,4,40,30">
+                        <TextBlock Style="{StaticResource Kicker}" Text="{s:T invite.kicker}" />
+                        <TextBlock Margin="0,10,0,0" Style="{StaticResource H1}" Text="{s:T invite.title}" />
+                        <TextBlock x:Name="InviteLead" Margin="0,8,0,0" MaxWidth="640" HorizontalAlignment="Left" Style="{StaticResource Muted}" TextWrapping="Wrap" />
+
+                        <StackPanel x:Name="InviteLoading" Margin="0,28,0,0" Orientation="Horizontal">
+                            <Ellipse Margin="0,0,12,0" Style="{StaticResource Spinner}" />
+                            <TextBlock VerticalAlignment="Center" Style="{StaticResource Muted}" Text="{s:T invite.loading}" />
+                        </StackPanel>
+
+                        <Border x:Name="InviteError" Margin="0,22,0,0" MaxWidth="720" HorizontalAlignment="Left" Padding="26" Style="{StaticResource Panel}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock x:Name="InviteErrorText" FontSize="13.5" Foreground="#FFA3AE" TextWrapping="Wrap" />
+                                <Button Height="42" Margin="0,16,0,0" Padding="18,0" HorizontalAlignment="Left" Click="InviteRetry_Click" Style="{StaticResource SecondaryButton}">
+                                    <TextBlock FontSize="13.5" Text="{s:T pricing.retry}" />
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel x:Name="InviteContent" Visibility="Collapsed">
+                            <Border Margin="0,22,0,0" Padding="26" Style="{StaticResource Panel}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource Kicker}" Text="{s:T invite.linkTitle}" />
+                                    <Grid Margin="0,14,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="InviteLinkBox" AutomationProperties.Name="{s:T invite.linkLabel}" GotKeyboardFocus="InviteLinkBox_Focus" IsReadOnly="True" Style="{StaticResource Field}" />
+                                        <Button Grid.Column="1" Height="50" Margin="10,0,0,0" Padding="22,0" Click="InviteCopy_Click" Style="{StaticResource PrimaryButton}">
+                                            <TextBlock FontSize="14" Text="{s:T invite.copy}" />
+                                        </Button>
+                                        <Button Grid.Column="2" Height="50" Margin="10,0,0,0" Padding="22,0" Click="InviteShare_Click" Style="{StaticResource SecondaryButton}">
+                                            <TextBlock FontSize="14" Text="{s:T invite.share}" />
+                                        </Button>
+                                    </Grid>
+                                    <TextBlock x:Name="InviteCodeLine" Margin="2,12,0,0" Style="{StaticResource Small}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <Grid Margin="0,16,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource Tile}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource Small}" Text="{s:T invite.stat.invited}" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="InviteStatInvited" Margin="0,8,0,0" FontSize="26" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource Tile}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource Small}" Text="{s:T invite.stat.valid}" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="InviteStatValid" Margin="0,8,0,0" FontSize="26" FontWeight="SemiBold" />
+                                        <TextBlock x:Name="InviteStatPending" Margin="0,2,0,0" Style="{StaticResource Small}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="4" Style="{StaticResource Tile}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource Small}" Text="{s:T invite.stat.earned}" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="InviteStatEarned" Margin="0,8,0,0" FontSize="26" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="6" Style="{StaticResource Tile}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource Small}" Text="{s:T invite.stat.left}" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="InviteStatLeft" Margin="0,8,0,0" FontSize="26" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <Border Margin="0,16,0,0" Padding="26" Style="{StaticResource Panel}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource Kicker}" Text="{s:T invite.rulesTitle}" />
+                                    <StackPanel Margin="0,14,0,0">
+                                        <Grid Margin="0,0,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="26" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource LilacBrush}" Text="1." />
+                                            <TextBlock x:Name="InviteRule1" Grid.Column="1" Style="{StaticResource Muted}" TextWrapping="Wrap" />
+                                        </Grid>
+                                        <Grid Margin="0,10,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="26" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource LilacBrush}" Text="2." />
+                                            <TextBlock x:Name="InviteRule2" Grid.Column="1" Style="{StaticResource Muted}" TextWrapping="Wrap" />
+                                        </Grid>
+                                        <Grid Margin="0,10,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="26" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource LilacBrush}" Text="3." />
+                                            <TextBlock x:Name="InviteRule3" Grid.Column="1" Style="{StaticResource Muted}" TextWrapping="Wrap" />
+                                        </Grid>
+                                        <Grid Margin="0,10,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="26" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource LilacBrush}" Text="4." />
+                                            <TextBlock x:Name="InviteRule4" Grid.Column="1" Style="{StaticResource Muted}" TextWrapping="Wrap" />
+                                        </Grid>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -1200,6 +1331,28 @@
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.trayHint}" />
                                             </StackPanel>
                                             <CheckBox x:Name="SettingsTray" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                        </Grid>
+                                        <Grid Margin="0,18,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Margin="0,0,16,0">
+                                                <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.stats}" />
+                                                <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.statsHint}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                            <CheckBox x:Name="SettingsStats" Grid.Column="1" Checked="Insight_Click" Style="{StaticResource Switch}" Unchecked="Insight_Click" />
+                                        </Grid>
+                                        <Grid Margin="0,18,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Margin="0,0,16,0">
+                                                <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.surveys}" />
+                                                <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.surveysHint}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                            <CheckBox x:Name="SettingsSurveys" Grid.Column="1" Checked="Insight_Click" Style="{StaticResource Switch}" Unchecked="Insight_Click" />
                                         </Grid>
                                     </StackPanel>
                                 </Border>
@@ -1485,6 +1638,30 @@
                 </StackPanel>
             </Border>
         </Grid>
+
+        <!-- ── In-app survey: a small card, bottom right, closable ─────────────── -->
+        <Border x:Name="SurveyCard" Width="400" Margin="0,0,24,24" Padding="22,16,22,20" HorizontalAlignment="Right" VerticalAlignment="Bottom" Style="{StaticResource Panel}" Visibility="Collapsed">
+            <StackPanel>
+                <Grid>
+                    <TextBlock VerticalAlignment="Center" Style="{StaticResource Kicker}" Text="{s:T survey.kicker}" />
+                    <Button HorizontalAlignment="Right" Click="SurveyClose_Click" Style="{StaticResource IconButton}" ToolTip="{s:T survey.close}">
+                        <Path Width="12" Height="12" Data="{StaticResource IconX}" Style="{StaticResource Stroke}" />
+                    </Button>
+                </Grid>
+                <StackPanel x:Name="SurveyContent">
+                    <TextBlock x:Name="SurveyQuestion" Margin="0,8,0,0" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <StackPanel x:Name="SurveyBody" Margin="0,14,0,0" />
+                    <StackPanel x:Name="SurveyCommentPanel" Margin="0,14,0,0" Visibility="Collapsed">
+                        <TextBlock Margin="2,0,0,8" Style="{StaticResource FieldLabel}" Text="{s:T survey.comment}" />
+                        <TextBox x:Name="SurveyComment" MaxLength="1000" Style="{StaticResource Field}" />
+                    </StackPanel>
+                    <Button x:Name="SurveySend" Height="46" Margin="0,16,0,0" HorizontalAlignment="Stretch" Click="SurveySend_Click" IsEnabled="False" Style="{StaticResource PrimaryButton}">
+                        <TextBlock FontSize="14.5" Text="{s:T survey.send}" />
+                    </Button>
+                </StackPanel>
+                <TextBlock x:Name="SurveyThanks" Margin="0,14,0,6" FontSize="15" FontWeight="SemiBold" Text="{s:T survey.thanks}" Visibility="Collapsed" />
+            </StackPanel>
+        </Border>
 
         <!-- Window controls (always on top) -->
         <StackPanel Margin="0,15,16,0" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal">

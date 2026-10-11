@@ -253,11 +253,12 @@ public sealed class ColituAuthService
         await LoadMeAsync();
     }
 
-    public async Task<ColituAuthResult> RegisterAsync(string name, string email, string password)
+    public async Task<ColituAuthResult> RegisterAsync(string name, string email, string password, string? invite = null)
     {
         // The panel account only carries an email address; the display name stays local.
         // Registration already e-mails the first code when verification is required.
-        return await AuthenticateAsync("/auth/register", new { email = email.Trim(), password, locale = Loc.I.Language }, email.Trim(), sendCode: false);
+        // "source" tells the panel which app signed up; an unknown invite code is ignored by the panel.
+        return await AuthenticateAsync("/auth/register", ColituReferral.RegisterBody(email, password, Loc.I.Language, invite), email.Trim(), sendCode: false);
     }
 
     /// <summary>E-mails a six-digit password reset code. Unknown addresses get the same answer.</summary>

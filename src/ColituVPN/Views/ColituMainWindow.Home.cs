@@ -553,6 +553,7 @@ public partial class ColituMainWindow
             SettingsWarmSpare.IsChecked = preferences.WarmSpareEnabled;
             SettingsTray.IsChecked = preferences.CloseToTray;
             SettingsStartup.IsChecked = _vpn.LaunchAtStartup;
+            ApplyInsightUi();
             ApplyModeHint();
             ApplySplitUi();
             ApplyRotationUi();

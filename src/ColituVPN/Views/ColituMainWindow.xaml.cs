@@ -286,6 +286,7 @@ public partial class ColituMainWindow
             ApplyStatus();
             _ = MeasurePingsAsync();
             _ = RefreshNoticesAsync();
+            OnInsightTick();
             if (_page == "account")
             {
                 await LoadDevicesAsync();
@@ -356,6 +357,8 @@ public partial class ColituMainWindow
         _offline = false;
         DeviceList.ItemsSource = null;
         DevicesTitle.Text = "";
+        ClearInvite();
+        HideSurvey();
         ClearNotices();
     }
 
@@ -388,6 +391,7 @@ public partial class ColituMainWindow
             "account" => AccountPage,
             "settings" => SettingsPage,
             "support" => SupportPage,
+            "invite" => InvitePage,
             _ => HomePage
         };
         foreach (FrameworkElement child in Pages.Children)
@@ -403,6 +407,7 @@ public partial class ColituMainWindow
             "account" => NavAccount,
             "settings" => NavSettings,
             "support" => null,
+            "invite" => null,
             _ => NavHome
         };
         if (nav == null)
@@ -446,6 +451,9 @@ public partial class ColituMainWindow
                 break;
             case "support":
                 _ = OpenSupportAsync();
+                break;
+            case "invite":
+                _ = LoadInviteAsync();
                 break;
         }
         UpdateSupportPolling();
@@ -509,6 +517,8 @@ public partial class ColituMainWindow
         ApplyMfaTexts();
         ApplySplitUi();
         RenderSupportList();
+        ApplyInvite();
+        RenderSurvey();
         _ = LoadDevicesAsync();
         if (AppView.Visibility == Visibility.Visible)
         {
