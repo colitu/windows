@@ -110,7 +110,8 @@ public sealed class ColituUpdateService
                 DownloadUrl = payload.DownloadUrl!,
                 Sha256 = payload.Sha256,
                 Force = payload.ForceUpdate,
-                Notes = payload.ReleaseNotes ?? ""
+                // releaseNotes is not covered by the signature: never shown (the release script leaves it empty).
+                Notes = ""
             };
             ValidateDownloadUrl(info.DownloadUrl);
             UpdateAvailable?.Invoke(info);

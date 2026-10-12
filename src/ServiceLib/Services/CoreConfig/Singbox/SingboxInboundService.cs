@@ -19,6 +19,10 @@ public partial class CoreConfigSingboxService
                     tag = EInboundProtocol.socks.ToString(),
                     listen = Global.Loopback,
                 };
+                if (AppManager.Instance.LocalInboundAuthFor(_config.TunModeItem.EnableTun))
+                {
+                    inbound.users = [new() { username = AppManager.Instance.LocalInboundUser, password = AppManager.Instance.LocalInboundPass }];
+                }
                 _coreConfig.inbounds.Add(inbound);
 
                 inbound.listen_port = listenPort;

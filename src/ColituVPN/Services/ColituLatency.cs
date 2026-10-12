@@ -74,6 +74,48 @@ public static class ColituLatency
             .Take(MaxProbes)
             .ToList();
 
+    /// <summary>
+    /// The public IPv4 addresses the probes of <paramref name="servers"/> dial (same resolver and
+    /// filters as <see cref="MeasureAsync(string, int, int?, bool)"/>), for the TUN ping rule
+    /// (<see cref="ColituPingRoute"/>). Whatever does not resolve within <paramref name="budget"/>
+    /// is left out: those probes rely on the adapter pin alone.
+    /// </summary>
+    public static async Task<IReadOnlyList<IPAddress>> ResolveTargetsAsync(IEnumerable<ColituVpnServer> servers, TimeSpan budget, CancellationToken token = default)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(budget);
+        using var gate = new SemaphoreSlim(MaxConcurrency);
+        var hosts = ProbeTargets(servers)
+            .Select(server => server.Host!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var lookups = hosts.Select(async host =>
+        {
+            try
+            {
+                await gate.WaitAsync(deadline.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+            try
+            {
+                return await ColituNetwork.ResolveServerAsync(host, deadline.Token);
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+        var addresses = await Task.WhenAll(lookups);
+        return ColituPingRoute.Targets(addresses.OfType<IPAddress>());
+    }
+
     /// <summary>The server has a probe address: a missing result from <see cref="MeasureAllAsync"/> means the ping failed.</summary>
     public static bool CanProbe(ColituVpnServer server) =>
         server.Id.IsNotEmpty() && server.Host.IsNotEmpty() && server.Port is { } port && AllowedPorts.Contains(port);

@@ -30,6 +30,10 @@ public sealed class ColituVpnService
     private volatile bool _credentialsRefused;
 
     private List<ColituVpnServer> _lastServers = [];
+    // TUN ping rule (ColituPingRoute): this exe when only administrators can change it, and the
+    // resolved probe addresses of the server list, refreshed at every connect.
+    private readonly Lazy<string?> _pingRouteAppPath = new(ColituPingRoute.TrustedAppPath);
+    private IReadOnlyList<IPAddress> _pingRouteTargets = [];
     private Timer? _watchdog;
     /// <summary>When the last traffic and DNS checks of this session ran (Environment.TickCount64).</summary>
     private long _lastTrafficCheckAt;
@@ -265,6 +269,7 @@ public sealed class ColituVpnService
         var round = await ColituLatency.MeasureRoundAsync(servers, requirePin: connected);
         var measured = round.Ms;
         var at = DateTimeOffset.UtcNow;
+        await RefreshPingRouteTargetsAsync(servers, TimeSpan.FromSeconds(1));
         if (connected)
         {
             LogConnection($"Pings measured while connected, direct (outside the tunnel) via adapter #{round.InterfaceIndex}{(EffectiveTunMode ? ", TUN ping route" : "")}: {measured.Count} ok, {round.Unpinned.Count} not pinned (kept old values)");
@@ -607,6 +612,11 @@ public sealed class ColituVpnService
             if (automatic && !quick && !KillSwitchEngaged)
             {
                 await EnsureFreshPingsAsync(token);
+            }
+            if (EffectiveTunMode)
+            {
+                // Addresses for the TUN ping rule; the resolver's cache usually has them from the last pings.
+                await RefreshPingRouteTargetsAsync(_lastServers, TimeSpan.FromSeconds(3), token);
             }
             if (Preferences.KillSwitchEnabled)
             {
@@ -1066,6 +1076,27 @@ public sealed class ColituVpnService
     }
 
     /// <summary>
+    /// Probe addresses for the TUN ping rule, from <paramref name="servers"/> (the resolver's cache
+    /// usually answers). An empty answer (no server list yet, as at an automatic connect right after
+    /// start) keeps the previous addresses; the next core start uses the new ones.
+    /// </summary>
+    private async Task RefreshPingRouteTargetsAsync(IEnumerable<ColituVpnServer> servers, TimeSpan budget, CancellationToken token = default)
+    {
+        try
+        {
+            var targets = await ColituLatency.ResolveTargetsAsync(servers, budget, token);
+            if (targets.Count > 0)
+            {
+                _pingRouteTargets = targets;
+            }
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            // Over budget: the previous addresses stay.
+        }
+    }
+
+    /// <summary>
     /// Every sing-box config that runs the TUN adapter (sing-box alone or the TUN front of an Xray
     /// tunnel) sends the app's own probe connections direct (<see cref="ColituPingRoute"/>).
     /// </summary>
@@ -1077,11 +1108,18 @@ public sealed class ColituVpnService
         }
         try
         {
-            if (ColituPingRoute.ApplySingbox(json, ColituPingRoute.AppProcessName) is { } routed)
+            var appPath = _pingRouteAppPath.Value;
+            var targets = _pingRouteTargets;
+            if (appPath == null || targets.Count == 0)
+            {
+                LogConnection($"Ping route not added ({(appPath == null ? "the app is not in an admin-only folder" : "no resolved probe address")}); pings rely on the adapter pin");
+                return json;
+            }
+            if (ColituPingRoute.ApplySingbox(json, appPath, targets) is { } routed)
             {
                 if (!ReferenceEquals(routed, json))
                 {
-                    LogConnection($"Ping route: {ColituPingRoute.AppProcessName} TCP to the probe ports goes direct in the TUN config (profile {context.Node?.IndexId})");
+                    LogConnection($"Ping route: this app's TCP to {targets.Count} probe address(es) on the probe ports goes direct in the TUN config (profile {context.Node?.IndexId})");
                 }
                 return routed;
             }
@@ -1097,7 +1135,12 @@ public sealed class ColituVpnService
     /// <summary>Where a check of the whole tunnel goes: the check inbound, else the local proxy port (routing rules apply there).</summary>
     private (int Port, NetworkCredential? Credentials) TunnelCheckTarget() => _checkInbound is { } check
         ? (check.Port, new NetworkCredential(check.User, check.Password))
-        : (AppManager.Instance.GetLocalPort(EInboundProtocol.socks), null);
+        : (AppManager.Instance.GetLocalPort(EInboundProtocol.socks), LocalInboundCredentials());
+
+    /// <summary>The local port's per-run account while it asks for one (TUN mode), else null.</summary>
+    private NetworkCredential? LocalInboundCredentials() => AppManager.Instance.LocalInboundAuthFor(_config.TunModeItem.EnableTun)
+        ? new NetworkCredential(AppManager.Instance.LocalInboundUser, AppManager.Instance.LocalInboundPass)
+        : null;
 
     /// <summary>
     /// Adds the planned spare to the main
@@ -3831,7 +3874,7 @@ public sealed class ColituVpnService
                     throw new InvalidOperationException("Imported server could not be selected as default.");
                 }
                 _attemptProtocol = candidate.Protocol;
-                LogConnection($"Trying transport {candidate.Protocol}: index={profile.IndexId}, address={profile.Address}:{profile.Port}");
+                LogConnection($"Trying transport {candidate.Protocol}: index={profile.IndexId}, address={ColituLogPrivacy.ForLog(profile.Address)}:{profile.Port}");
 
                 try
                 {
@@ -4263,6 +4306,10 @@ public sealed class ColituVpnService
 
         // Send through the physical adapter, never through another VPN's tunnel.
         _config.CoreBasicItem.BindInterface = ColituNetwork.PhysicalInterfaceName();
+        // TUN mode: the local SOCKS/HTTP port asks for a per-run account, so other programs and users
+        // on this PC cannot use the tunnel through it. System-proxy mode keeps it open (Windows'
+        // proxy setting cannot carry credentials); it stays on 127.0.0.1 either way.
+        AppManager.Instance.LocalInboundAuth = _config.TunModeItem.EnableTun;
         LogConnection($"Building core config for profile={profileItem.IndexId}, type={profileItem.ConfigType}, outbound interface={_config.CoreBasicItem.BindInterface ?? "auto"}");
         var allResult = await CoreConfigContextBuilder.BuildAll(_config, profileItem);
         if (!allResult.Success)
