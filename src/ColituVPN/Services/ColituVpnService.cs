@@ -469,12 +469,16 @@ public sealed class ColituVpnService
             {
                 // A real failure (not "this computer has no internet"); plan and paused-device errors are not counted.
                 ColituInsights.Instance.ConnectFinished(false, insightWatch.ElapsedMilliseconds);
+                ColituInsights.Instance.FunctionalCheck(false);
                 throw;
             }
             if (Status == ColituVpnStatus.Connected)
             {
                 // A cancelled attempt ends Disconnected and counts as nothing.
                 ColituInsights.Instance.ConnectFinished(true, insightWatch.ElapsedMilliseconds);
+                // Connected means internet was verified through the tunnel: one check per connect,
+                // not one per transport tried (blocked transports made it look like ~50 %).
+                ColituInsights.Instance.FunctionalCheck(true);
                 ColituInsights.Instance.AddFeatures(ColituInsightSpec.FeaturesOf(Preferences, manualServer: server != null, multihop: ConnectedServer is { IsMultihop: true }));
             }
         }
@@ -632,7 +636,8 @@ public sealed class ColituVpnService
                     : server;
                 if (round > 1)
                 {
-                    _connectFallback = true;
+                    // First try = the first round, whichever of its pair (primary or spare) carried traffic.
+                    if (!(wasSwap && round == 2)) _connectFallback = true;
                     ConnectStage = "connect.tryingOther";
                     StatusChanged?.Invoke(Status);
                     LogConnection($"Trying another server ({(viaRecovery ? $"recovery set, id={recoveryEnvelope!.Server?.Id}" : target == null ? "the panel chooses" : $"id={target.Id}")}, {connectWatch.ElapsedMilliseconds} ms into the connect)");
@@ -3742,6 +3747,7 @@ public sealed class ColituVpnService
         var watch = Stopwatch.StartNew();
         // Spares that failed together with their primary in this connect ("server|transport"): not reused.
         var excludedSpares = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var swappedFirstRound = false;
         try
         {
             for (var index = 0; index < profiles.Count; index++)
@@ -3795,7 +3801,6 @@ public sealed class ColituVpnService
                             credentials: new NetworkCredential(verify.User, verify.Password))).Success;
                     }
                     var outcome = ColituParallelConnect.Decide(probe.Success, spareProbe?.Success, graceOk);
-                    ColituInsights.Instance.FunctionalCheck(outcome == ColituParallelOutcome.PrimaryWins);
                     if (plan != null && spareProbe != null)
                     {
                         var winner = outcome switch
@@ -3807,9 +3812,16 @@ public sealed class ColituVpnService
                         LogConnection($"parallel round: {candidate.Protocol} vs {Describe(plan)} → winner {winner} in {pairWatch.ElapsedMilliseconds} ms");
                     }
                     observations.Add(new ColituProtocolObservation { Protocol = candidate.Protocol, Reachable = probe.Success || graceOk, LatencyMs = probe.LatencyMs });
+                    if (plan != null && spareProbe != null && plan.NextServerId == null && plan.Protocol != candidate.Protocol)
+                    {
+                        // The spare ran on this node too: report it, or a transport that mostly runs as
+                        // the spare (XHTTP) only ever shows up when it failed as a primary.
+                        observations.Add(new ColituProtocolObservation { Protocol = plan.Protocol, Reachable = spareProbe.Success, LatencyMs = spareProbe.LatencyMs });
+                    }
                     if (outcome == ColituParallelOutcome.PrimaryWins)
                     {
-                        if (index > 0)
+                        // The spare of the first round, promoted after a swap, is still the first try.
+                        if (index > 0 && !(index == 1 && swappedFirstRound))
                         {
                             _connectFallback = true;
                         }
@@ -3834,6 +3846,7 @@ public sealed class ColituVpnService
                     }
                     if (outcome == ColituParallelOutcome.SwapRoles && plan != null)
                     {
+                        swappedFirstRound = swappedFirstRound || index == 0;
                         if (plan.NextServerId != null && _spareServer is { } spareServer)
                         {
                             // The spare's server and transport take the lead (one quick reload, new spare).
