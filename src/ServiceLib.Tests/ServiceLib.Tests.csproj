@@ -17,6 +17,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="TestData\*.db" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ServiceLib\ServiceLib.csproj" />
   </ItemGroup>
 
