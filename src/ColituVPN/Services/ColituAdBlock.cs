@@ -5,9 +5,10 @@ namespace v2rayN.Services;
 /// <summary>
 /// Colitu's ad-blocking DNS-over-HTTPS servers, tried in order. They are Colitu's own nodes, so they
 /// are not in the public source. The panel names them in the signed-in bootstrap
-/// (<c>/client/bootstrap</c>, <c>ad_block.doh</c>) and the app keeps the last answer, so they can
-/// change without a release. Until the panel has answered with the field (it may not have it yet),
-/// the list embedded by scripts/build-installer.ps1 is used. No list at all: the switch is hidden.
+/// (<c>/client/bootstrap</c>, <c>ad_block.doh</c>) and the app keeps the last non-empty answer, so
+/// they can change without a release. An empty list or no field (a panel that has no list
+/// configured yet) never turns ad blocking off: the kept list, else the one embedded by
+/// scripts/build-installer.ps1, is used. No list at all: the switch is hidden.
 /// </summary>
 public static class ColituAdBlock
 {
@@ -22,7 +23,7 @@ public static class ColituAdBlock
             .OfType<System.Reflection.AssemblyMetadataAttribute>()
             .FirstOrDefault(attribute => attribute.Key == "ColituAdBlockDoh")?.Value);
 
-    /// <summary>The panel's list when it has named one (even an empty one), else the embedded list.</summary>
+    /// <summary>The panel's last non-empty list, else the embedded list.</summary>
     public static string[] Servers
     {
         get
@@ -42,12 +43,12 @@ public static class ColituAdBlock
     public static bool Available => Servers.Length > 0;
 
     /// <summary>
-    /// Keeps <c>ad_block.doh</c> of a bootstrap answer. An answer without the field (an older panel)
-    /// leaves the list as it is; an empty list clears it. True when the list changed.
+    /// Keeps <c>ad_block.doh</c> of a bootstrap answer when it names servers. An empty list or an
+    /// answer without the field leaves the kept list as it is. True when the list changed.
     /// </summary>
     public static bool Remember(JsonElement bootstrap, string? path = null)
     {
-        if (ServersOf(bootstrap) is not { } servers)
+        if (ServersOf(bootstrap) is not { Length: > 0 } servers)
         {
             return false;
         }
@@ -108,7 +109,8 @@ public static class ColituAdBlock
     {
         try
         {
-            return File.Exists(path) ? Parse(string.Join(",", JsonSerializer.Deserialize<string[]>(File.ReadAllText(path)) ?? [])) : null;
+            var kept = File.Exists(path) ? Parse(string.Join(",", JsonSerializer.Deserialize<string[]>(File.ReadAllText(path)) ?? [])) : null;
+            return kept is { Length: > 0 } ? kept : null;
         }
         catch
         {

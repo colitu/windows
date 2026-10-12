@@ -103,6 +103,35 @@ public sealed class ColituAuthService
     /// <summary>True once a stored or new session exists on this computer.</summary>
     public bool HasSession => !string.IsNullOrWhiteSpace(_refreshToken);
 
+    /// <summary>
+    /// A signed-in session is saved on this computer: <see cref="HasSession"/>, or, before
+    /// <see cref="InitializeAsync"/> has loaded it (start-up recovery runs first), the session file.
+    /// </summary>
+    public bool HasSavedSession
+    {
+        get
+        {
+            if (HasSession)
+            {
+                return true;
+            }
+            try
+            {
+                var path = File.Exists(SessionPath()) ? SessionPath() : LegacySessionPath();
+                if (!File.Exists(path))
+                {
+                    return false;
+                }
+                var saved = JsonSerializer.Deserialize<ColituSession>(File.ReadAllText(path), _jsonOptions);
+                return !string.IsNullOrWhiteSpace(saved?.RefreshToken);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
     /// <summary>Set when the panel rejected the session saved on this computer.</summary>
     public bool SessionWasRevoked { get; private set; }
 

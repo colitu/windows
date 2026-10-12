@@ -3405,7 +3405,10 @@ public sealed class ColituVpnService
         _serviceArmed = true;
         LogConnection($"The kill switch was still armed from the previous run (since {status.ArmedAt:u}, {status.Reason}, owner alive={status.OwnerAlive}, before boot={status.ArmedBeforeBoot})");
         var preferences = Preferences;
-        if (preferences.KillSwitchEnabled && preferences.AutoConnectEnabled && ColituAuthService.Instance.HasSession)
+        // Runs before the session is loaded (StartAsync): ask the saved file. With HasSession this was
+        // always false here, so the switch opened after every crash and stayed open until the
+        // automatic connect armed it again.
+        if (preferences.KillSwitchEnabled && preferences.AutoConnectEnabled && ColituAuthService.Instance.HasSavedSession)
         {
             _killSwitchHeldFromPreviousRun = true;
             Notice?.Invoke("info.killSwitchHeld");

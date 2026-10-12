@@ -28,7 +28,7 @@ public class ColituStep3FixesTests : IDisposable
     {
         ColituAdBlock.ServersOf(Json("""{"ad_block":{"doh":["https://dns-a.example.test:3443/dns-query","http://plain.example.test/dns-query","https://user:pw@x.example.test/q","not a url","https://dns-b.example.test/dns-query"]}}"""))
             .Should().Equal("https://dns-a.example.test:3443/dns-query", "https://dns-b.example.test/dns-query");
-        ColituAdBlock.ServersOf(Json("""{"ad_block":{"doh":[]}}""")).Should().BeEmpty("an empty list clears the servers");
+        ColituAdBlock.ServersOf(Json("""{"ad_block":{"doh":[]}}""")).Should().BeEmpty();
         ColituAdBlock.ServersOf(Json("""{"user":{}}""")).Should().BeNull("an older panel without the field changes nothing");
         ColituAdBlock.ServersOf(Json("""{"ad_block":{"doh":"https://x.example.test"}}""")).Should().BeNull();
     }
@@ -49,8 +49,10 @@ public class ColituStep3FixesTests : IDisposable
 
         ColituAdBlock.Remember(Json("""{"ad_block":{"doh":["https://dns-a.example.test/dns-query"]}}"""), path).Should().BeFalse("unchanged");
 
-        ColituAdBlock.Remember(Json("""{"ad_block":{"doh":[]}}"""), path).Should().BeTrue();
-        ColituAdBlock.Available.Should().BeFalse("the panel named no servers: the switch is hidden");
+        // The panel has no list configured yet: ad blocking keeps working with the kept list.
+        ColituAdBlock.Remember(Json("""{"ad_block":{"doh":[]}}"""), path).Should().BeFalse();
+        ColituAdBlock.Servers.Should().Equal("https://dns-a.example.test/dns-query");
+        File.ReadAllText(path).Should().Contain("dns-a.example.test");
     }
 
     [Fact]
