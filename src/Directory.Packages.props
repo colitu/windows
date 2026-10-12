@@ -25,7 +25,7 @@
     <PackageVersion Include="Semi.Avalonia.AvaloniaEdit" Version="11.2.0.2" />
     <PackageVersion Include="Semi.Avalonia.DataGrid" Version="11.3.7.3" />
     <PackageVersion Include="SharpVectors.Wpf" Version="1.8.6" />
-    <PackageVersion Include="NLog" Version="6.1.2" />
+    <PackageVersion Include="NLog" Version="6.2.1" />
     <PackageVersion Include="sqlite-net-pcl" Version="1.9.172" />
     <!-- ServiceBase for the kill-switch service (ColituKillSwitchService). -->
     <PackageVersion Include="System.ServiceProcess.ServiceController" Version="10.0.12" />
