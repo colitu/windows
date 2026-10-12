@@ -129,6 +129,9 @@ public partial class ColituMainWindow
                     Tag = value,
                     FontSize = 12.5,
                     MinHeight = 34,
+                    // Eleven cells share the card width (~38 px each): the default 10 px side
+                    // padding left no room for "10".
+                    Padding = new Thickness(0, 6, 0, 6),
                     Style = (Style)FindResource("SegmentOption"),
                     IsChecked = value == _surveyScore
                 };

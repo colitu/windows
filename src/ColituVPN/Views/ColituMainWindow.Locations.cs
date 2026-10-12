@@ -41,7 +41,6 @@ public partial class ColituMainWindow
                     IsChecked = category == _category,
                     MinHeight = 36,
                     FontSize = 13.5,
-                    Padding = new Thickness(14, 0, 14, 0),
                     Opacity = category == "all" || count > 0 ? 1 : 0.55
                 };
                 option.Checked += Category_Checked;
