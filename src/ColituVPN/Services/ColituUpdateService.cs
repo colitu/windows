@@ -633,11 +633,45 @@ public sealed class ColituUpdateService
 
     private static void ClearCompletedAttempt()
     {
+        DeleteStalePackages(Path.Combine(Utils.StartupPath(), UpdateFolderName), LocalVersionCode);
         var state = LoadUpdateState();
         if (state == null) return;
         if (LocalVersionCode >= state.AttemptedVersionCode || DateTimeOffset.Now - state.AttemptedAt >= AttemptCooldown)
         {
             try { File.Delete(StatePath()); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Installers of a version this app already is (or is newer than) and the helper script are left
+    /// in <paramref name="folder"/> when an update failed or the app was updated another way:
+    /// about 100 MB each, never needed again.
+    /// </summary>
+    internal static void DeleteStalePackages(string folder, int localVersionCode)
+    {
+        try
+        {
+            if (!Directory.Exists(folder))
+            {
+                return;
+            }
+            foreach (var file in Directory.EnumerateFiles(folder, "ColituVPN-new-*.exe"))
+            {
+                var code = Path.GetFileNameWithoutExtension(file)["ColituVPN-new-".Length..];
+                if (int.TryParse(code, NumberStyles.None, CultureInfo.InvariantCulture, out var version) && version <= localVersionCode)
+                {
+                    File.Delete(file);
+                }
+            }
+            var script = Path.Combine(folder, "apply-update.ps1");
+            if (File.Exists(script))
+            {
+                File.Delete(script);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog($"ColituUpdateService.DeleteStalePackages: {ex.GetType().Name}");
         }
     }
 

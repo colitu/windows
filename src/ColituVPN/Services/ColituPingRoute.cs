@@ -180,6 +180,37 @@ public static class ColituPingRoute
         };
     }
 
+    /// <summary>The targets kept by <see cref="SaveTargets"/>; empty when there is no readable file.</summary>
+    public static IReadOnlyList<IPAddress> LoadTargets(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return [];
+            }
+            var values = JsonSerializer.Deserialize<string[]>(File.ReadAllText(path)) ?? [];
+            return Targets(values.Select(value => IPAddress.TryParse(value, out var address) ? address : null).OfType<IPAddress>());
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    /// <summary>Keeps <paramref name="targets"/> for the next start; failures only cost the rule at the next automatic connect.</summary>
+    public static void SaveTargets(string path, IEnumerable<IPAddress> targets)
+    {
+        try
+        {
+            File.WriteAllText(path, JsonSerializer.Serialize(Targets(targets).Select(address => address.ToString()).ToArray()));
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog($"ColituPingRoute.SaveTargets: {ex.GetType().Name}");
+        }
+    }
+
     /// <summary>Public IPv4 targets, without duplicates, at most <see cref="MaxTargets"/>.</summary>
     internal static List<IPAddress> Targets(IEnumerable<IPAddress> targets) =>
         targets

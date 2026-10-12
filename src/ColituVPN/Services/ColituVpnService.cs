@@ -33,7 +33,9 @@ public sealed class ColituVpnService
     // TUN ping rule (ColituPingRoute): this exe when only administrators can change it, and the
     // resolved probe addresses of the server list, refreshed at every connect.
     private readonly Lazy<string?> _pingRouteAppPath = new(ColituPingRoute.TrustedAppPath);
-    private IReadOnlyList<IPAddress> _pingRouteTargets = [];
+    // Kept on disk (admin-only data folder): an automatic connect right after start has no server
+    // list yet, and its first config still gets the rule.
+    private IReadOnlyList<IPAddress> _pingRouteTargets = ColituPingRoute.LoadTargets(PingTargetsPath());
     private Timer? _watchdog;
     /// <summary>When the last traffic and DNS checks of this session ran (Environment.TickCount64).</summary>
     private long _lastTrafficCheckAt;
@@ -392,6 +394,23 @@ public sealed class ColituVpnService
     private IReadOnlyList<string> HintedPreferredList() =>
         string.Equals(_session.NetworkHintsNetwork, _session.ClientNetwork, StringComparison.Ordinal) ? _session.NetworkHintsPreferred ?? [] : [];
 
+    /// <summary>Asks the panel's bootstrap for the ad-blocking resolvers (<see cref="ColituAdBlock"/>); failures keep the last list.</summary>
+    private async Task RefreshAdBlockAsync()
+    {
+        try
+        {
+            var bootstrap = await ColituAuthService.Instance.GetAuthorizedJsonAsync<JsonElement>("/client/bootstrap");
+            if (ColituAdBlock.Remember(bootstrap))
+            {
+                LogConnection($"Ad-blocking resolvers from the panel: {ColituAdBlock.Servers.Length}");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogConnection($"Bootstrap for the ad-blocking resolvers failed ({ex.GetType().Name}); the last list stays");
+        }
+    }
+
     public async Task<ColituServersResponse> GetServersAsync()
     {
         try
@@ -403,6 +422,8 @@ public sealed class ColituVpnService
             _multihopRoutes = servers.Multihop;
             // Never blocks the caller: the recovery set follows the server list (VPN on or off).
             _ = RefreshRecoverySetIfDueAsync();
+            // The ad-blocking resolvers come with the bootstrap; kept for the next connect.
+            _ = RefreshAdBlockAsync();
             if (!IsAutoSelection && SelectedServer == null && _session.SelectedServerId.IsNotEmpty())
             {
                 SelectedServer = _lastServers.FirstOrDefault(s => string.Equals(s.Id, _session.SelectedServerId, StringComparison.OrdinalIgnoreCase));
@@ -1086,14 +1107,17 @@ public sealed class ColituVpnService
     /// usually answers). An empty answer (no server list yet, as at an automatic connect right after
     /// start) keeps the previous addresses; the next core start uses the new ones.
     /// </summary>
+    private static string PingTargetsPath() => Utils.GetConfigPath("colitu-ping-targets.json");
+
     private async Task RefreshPingRouteTargetsAsync(IEnumerable<ColituVpnServer> servers, TimeSpan budget, CancellationToken token = default)
     {
         try
         {
             var targets = await ColituLatency.ResolveTargetsAsync(servers, budget, token);
-            if (targets.Count > 0)
+            if (targets.Count > 0 && !targets.SequenceEqual(_pingRouteTargets))
             {
                 _pingRouteTargets = targets;
+                ColituPingRoute.SaveTargets(PingTargetsPath(), targets);
             }
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
@@ -1836,6 +1860,16 @@ public sealed class ColituVpnService
         }
         DeleteConfigCache();
         DeleteRecoverySet();
+        // The kept ping targets are this account's server addresses.
+        _pingRouteTargets = [];
+        try
+        {
+            File.Delete(PingTargetsPath());
+        }
+        catch
+        {
+            // Best effort.
+        }
         _session = _session with { RecoveryAttemptAt = null, RecoveryAttemptUser = null };
         try
         {
@@ -4127,21 +4161,14 @@ public sealed class ColituVpnService
     internal static string RoutingDomainStrategy(bool tun) => tun ? Global.AsIs : Global.IPIfNonMatch;
 
     /// <summary>
-    /// Colitu's ad-blocking DNS servers, tried in order. They are Colitu's own nodes, so they are
-    /// not in the public source: scripts/build-installer.ps1 embeds them as assembly metadata.
-    /// Builds without them have no ad blocking (the switch is hidden).
+    /// Colitu's ad-blocking DNS servers, tried in order (<see cref="ColituAdBlock"/>): the panel's
+    /// list from the bootstrap, else the one embedded by the build. None: the switch is hidden.
     /// </summary>
-    internal static readonly string[] ColituAdBlockDohServers = ParseAdBlockDohServers(
-        typeof(ColituVpnService).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
-            .OfType<System.Reflection.AssemblyMetadataAttribute>()
-            .FirstOrDefault(attribute => attribute.Key == "ColituAdBlockDoh")?.Value);
+    internal static string[] ColituAdBlockDohServers => ColituAdBlock.Servers;
 
-    internal static bool AdBlockAvailable => ColituAdBlockDohServers.Length > 0;
+    internal static bool AdBlockAvailable => ColituAdBlock.Available;
 
-    internal static string[] ParseAdBlockDohServers(string? value) =>
-        (value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(url => url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && Uri.TryCreate(url, UriKind.Absolute, out _))
-            .ToArray();
+    internal static string[] ParseAdBlockDohServers(string? value) => ColituAdBlock.Parse(value);
 
     /// <summary>Whether a node (by its probe host) runs one of <see cref="ColituAdBlockDohServers"/>; the server list tags it.</summary>
     internal static bool HostsAdBlockDns(string? host) =>
