@@ -1,0 +1,27 @@
+{
+  "_doc": "VPN cores shipped in the installer, pinned by version and SHA-256. scripts/fetch-cores.ps1 downloads the official GitHub release asset, checks the archive hash (and for Xray the release's .dgst file) and every extracted file, then puts the files in place. scripts/build-installer.ps1 refuses to build when a file in the core folders does not have the hash below.",
+  "cores": [
+    {
+      "name": "xray",
+      "version": "26.10.10",
+      "url": "https://github.com/XTLS/Xray-core/releases/download/v26.10.10/Xray-windows-64.zip",
+      "digestUrl": "https://github.com/XTLS/Xray-core/releases/download/v26.10.10/Xray-windows-64.zip.dgst",
+      "sha256": "bfefce8e9804e53b7d75b7c49d958b34e89890d9d5e672329089d1b3111647af",
+      "folder": "xray-dosyalari",
+      "files": {
+        "xray.exe": "accbc95197799903338d59796dff54f79e854cea6cfc87be9c9949211f9a96e6"
+      }
+    },
+    {
+      "name": "sing-box",
+      "version": "1.14.3",
+      "url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.3/sing-box-1.14.3-windows-amd64.zip",
+      "sha256": "d8b86ef58936dba9230ec6a57ffa4243933f3c14ef4809828b6c553440ed1518",
+      "folder": "singbox-dosyalari",
+      "files": {
+        "sing-box.exe": "5c19bb3f8c12d4e85b3d47fe63123a7624b314b58dd7a8e32f51004f1c4d2faf",
+        "libcronet.dll": "3217c6260fbca5f16072e0b79735742f40109a63bb0ff88fd6b96dd6b54a2928"
+      }
+    }
+  ]
+}

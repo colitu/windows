@@ -310,8 +310,17 @@ public class Ruleset4Sbox
     public string? format { get; set; }
     public string? path { get; set; }
     public string? url { get; set; }
+    /// <summary>Deprecated in sing-box 1.14, removed in 1.16: use <see cref="http_client"/>.</summary>
     public string? download_detour { get; set; }
+    /// <summary>The HTTP client that downloads a remote rule set (sing-box 1.14+), here inline with its detour.</summary>
+    public HttpClient4Sbox? http_client { get; set; }
     public string? update_interval { get; set; }
+}
+
+/// <summary>An inline sing-box HTTP client (1.14+): the dial fields that matter here.</summary>
+public class HttpClient4Sbox
+{
+    public string? detour { get; set; }
 }
 
 public abstract class DialFields4Sbox

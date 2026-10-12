@@ -75,6 +75,8 @@ Assert-FileExists (Join-Path $xraySourceDir "wintun.dll") "wintun.dll"
 Assert-FileExists (Join-Path $xraySourceDir "geoip.dat") "geoip.dat"
 Assert-FileExists (Join-Path $xraySourceDir "geosite.dat") "geosite.dat"
 Assert-FileExists (Join-Path $singboxSourceDir "sing-box.exe") "sing-box.exe"
+# The cores run elevated: only the exact files pinned in scripts/cores.json go into a package.
+& (Join-Path $PSScriptRoot "fetch-cores.ps1") -Verify
 Assert-FileExists $SigningKeyPath "Update manifest signing key"
 Assert-FileExists $AdBlockDohPath "Ad-blocking DoH server list"
 $adBlockDoh = (Get-Content -LiteralPath $AdBlockDohPath -Raw).Trim()

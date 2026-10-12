@@ -1052,8 +1052,14 @@ public sealed class ColituVpnService
     /// </summary>
     private string PostProcessConfig(CoreConfigContext context, string json)
     {
-        json = ApplyPingRoute(context, json);
-        json = ApplyWarmSpare(context, json);
+        json = AddCheckInbound(context, ApplyWarmSpare(context, ApplyPingRoute(context, json)));
+        // Last, over everything the stages added: Xray 26.10 refuses repeated rule tags.
+        return context.RunCoreType == ECoreType.Xray ? ColituXrayRuleTags.Unique(json) : json;
+    }
+
+    /// <summary>The tunnel check inbound for the config of the profile being checked (<see cref="_checkIndexId"/>).</summary>
+    private string AddCheckInbound(CoreConfigContext context, string json)
+    {
         if (_checkIndexId == null || !string.Equals(context.Node?.IndexId, _checkIndexId, StringComparison.Ordinal))
         {
             return json;
@@ -3593,6 +3599,9 @@ public sealed class ColituVpnService
         // warnings and errors still show why the tunnel failed. No access log either.
         _config.CoreBasicItem.Loglevel = "warning";
         _config.CoreBasicItem.LogEnabled = false;
+        // Certificates are always checked (Xray 26.6.22+ also refuses "allowInsecure"): an old or
+        // edited settings file must not turn that off for every profile.
+        _config.CoreBasicItem.DefAllowInsecure = false;
         // The local proxy has no password: it stays on 127.0.0.1, whatever an old or edited
         // settings file says (v2rayN's "allow LAN" would open it to everyone on the network).
         foreach (var inbound in _config.Inbound ?? [])

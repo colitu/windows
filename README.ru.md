@@ -98,14 +98,15 @@ dotnet test ColituVPN.sln -c Release
 
 ### Установщик
 
-Исполняемые файлы ядер не хранятся в git. Перед сборкой установщика скачайте
-их из официальных релизов и сверьте хеши:
+Исполняемые файлы ядер не хранятся в git. Их версии и SHA-256 закреплены в
+[`scripts/cores.json`](scripts/cores.json) (Xray-core 26.10.10, sing-box 1.14.3).
+Скачайте и проверьте их из официальных релизов GitHub:
 
-- `xray.exe` из [релизов Xray-core](https://github.com/XTLS/Xray-core/releases)
-  (`Xray-windows-64.zip`) в папку `xray-dosyalari/`; нужная версия и SHA-256
-  указаны в [`xray-dosyalari/README.md`](xray-dosyalari/README.md).
-- `sing-box.exe` из [sing-box v1.14.2](https://github.com/SagerNet/sing-box/releases/tag/v1.14.2)
-  (`windows-amd64`) в папку `singbox-dosyalari/`.
+```powershell
+pwsh scripts/fetch-cores.ps1
+```
+
+`build-installer.ps1` не собирает установщик, если хеш файла ядра не совпадает.
 
 Затем выполните:
 

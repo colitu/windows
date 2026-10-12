@@ -109,7 +109,8 @@ public partial class CoreConfigSingboxService
                         format = "binary",
                         tag = item,
                         url = string.Format(srsUrl, item.StartsWith(geosite) ? geosite : geoip, item),
-                        download_detour = Global.ProxyTag
+                        // download_detour is deprecated since 1.14 and removed in 1.16.
+                        http_client = new HttpClient4Sbox { detour = Global.ProxyTag }
                     };
                 }
             }

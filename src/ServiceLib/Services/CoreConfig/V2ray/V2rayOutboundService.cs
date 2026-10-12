@@ -377,9 +377,16 @@ public partial class CoreConfigV2rayService
             {
                 streamSettings.security = _node.StreamSecurity;
 
+                // Xray 26.6.22+ refuses "allowInsecure": true (the core would not start at all) and
+                // has no switch to skip certificate checks any more: such a profile is connected with
+                // the certificate verified (or pinned, below) and the log says why it may fail.
+                var wantsInsecure = Utils.ToBool(_node.AllowInsecure.IsNullOrEmpty() ? _config.CoreBasicItem.DefAllowInsecure.ToString().ToLower() : _node.AllowInsecure);
+                if (wantsInsecure && _node.CertSha.IsNullOrEmpty() && CertPemManager.ParsePemChain(_node.Cert).Count == 0)
+                {
+                    Logging.SaveLog($"{_tag}: \"{_node.Remarks}\" asks to skip TLS certificate checks (allowInsecure), which Xray no longer supports; the certificate is verified. Pin it (certificate SHA-256) if the server uses its own certificate.");
+                }
                 TlsSettings4Ray tlsSettings = new()
                 {
-                    allowInsecure = Utils.ToBool(_node.AllowInsecure.IsNullOrEmpty() ? _config.CoreBasicItem.DefAllowInsecure.ToString().ToLower() : _node.AllowInsecure),
                     alpn = _node.GetAlpn(),
                     fingerprint = _node.Fingerprint.IsNullOrEmpty() ? _config.CoreBasicItem.DefFingerprint : _node.Fingerprint,
                     echConfigList = _node.EchConfigList.NullIfEmpty(),
@@ -392,11 +399,7 @@ public partial class CoreConfigV2rayService
                 {
                     tlsSettings.serverName = Utils.String2List(host)?.First();
                 }
-                if (!tlsSettings.echConfigList.IsNullOrEmpty())
-                {
-                    // For legacy xray compatibility, remove this in the future
-                    tlsSettings.echForceQuery = "full";
-                }
+                // echForceQuery was removed in Xray 26.6.22: not written.
                 var certs = CertPemManager.ParsePemChain(_node.Cert);
                 if (certs.Count > 0)
                 {
@@ -412,12 +415,12 @@ public partial class CoreConfigV2rayService
                     }
                     tlsSettings.certificates = certsettings;
                     tlsSettings.disableSystemRoot = true;
-                    tlsSettings.allowInsecure = false;
                 }
                 else if (!_node.CertSha.IsNullOrEmpty())
                 {
                     tlsSettings.pinnedPeerCertSha256 = _node.CertSha;
-                    tlsSettings.allowInsecure = false;
+                    // Xray 26.7.11+ checks a pinned certificate against a name: never leave it empty.
+                    tlsSettings.serverName ??= _node.Address.NullIfEmpty();
                 }
                 streamSettings.tlsSettings = tlsSettings;
             }

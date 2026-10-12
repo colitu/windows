@@ -98,14 +98,15 @@ dotnet test ColituVPN.sln -c Release
 
 ### Installer
 
-The core executables are not stored in git. Before packaging, download them
-from the official releases and check their hashes:
+The core executables are not stored in git. Their versions and SHA-256 hashes
+are pinned in [`scripts/cores.json`](scripts/cores.json) (Xray-core 26.10.10,
+sing-box 1.14.3). Download and check them from the official GitHub releases:
 
-- `xray.exe` from [Xray-core releases](https://github.com/XTLS/Xray-core/releases)
-  (`Xray-windows-64.zip`) into `xray-dosyalari/`; the expected version and
-  SHA-256 are in [`xray-dosyalari/README.md`](xray-dosyalari/README.md).
-- `sing-box.exe` from [sing-box v1.14.2](https://github.com/SagerNet/sing-box/releases/tag/v1.14.2)
-  (`windows-amd64`) into `singbox-dosyalari/`.
+```powershell
+pwsh scripts/fetch-cores.ps1
+```
+
+`build-installer.ps1` refuses to build when a core file does not have its pinned hash.
 
 Then run:
 
