@@ -19,12 +19,19 @@ public sealed class ColituApiClient
 
     private ColituApiClient() { }
 
+    /// <summary>
+    /// Upper bound on the servers (and on the multihop routes) taken from one answer. The real list
+    /// is a few dozen; a broken or hostile answer can't make the app build, ping and rank thousands.
+    /// </summary>
+    internal const int MaxServers = 1000;
+
     public async Task<ColituServersResponse> GetServersAsync()
     {
         var subscription = ColituAuthService.Instance.CurrentSubscription;
         var response = await ColituAuthService.Instance.GetAuthorizedJsonAsync<ColituServerListDto>("/servers") ?? new();
         var servers = (response.Servers ?? [])
             .Where(server => !string.IsNullOrWhiteSpace(server.Id))
+            .Take(MaxServers)
             .Select(MapServer)
             .ToList();
         return new ColituServersResponse
@@ -54,6 +61,7 @@ public sealed class ColituApiClient
     {
         return (routes ?? [])
             .Where(route => !string.IsNullOrWhiteSpace(route.Id) && route.Multihop != false && route.Entry != null && route.Exit != null)
+            .Take(MaxServers)
             .Select(MapRoute)
             .ToList();
     }

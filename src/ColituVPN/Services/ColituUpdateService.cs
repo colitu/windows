@@ -32,13 +32,17 @@ public sealed class ColituUpdateService
     private static readonly string LocalVersionName = ColituAuthService.ClientVersion;
     private static readonly TimeSpan AttemptCooldown = TimeSpan.FromMinutes(30);
 
-    private readonly HttpClient _httpClient = new(ColituCertPins.Pin(new SocketsHttpHandler { UseProxy = false, ConnectCallback = ColituPinnedHosts.ConnectAsync })) { Timeout = TimeSpan.FromSeconds(30) };
+    // The manifest is read into memory (a few hundred bytes): a broken or hostile answer can't grow without bound.
+    private readonly HttpClient _httpClient = new(ColituCertPins.Pin(new SocketsHttpHandler { UseProxy = false, ConnectCallback = ColituPinnedHosts.ConnectAsync })) { Timeout = TimeSpan.FromSeconds(30), MaxResponseContentBufferSize = MaxManifestBytes };
     // HttpClient.Timeout also cancels content streaming, so large packages need their own client
     // with a generous limit; otherwise slow connections abort the download after 30 seconds.
     private readonly HttpClient _downloadClient = new(ColituCertPins.Pin(new SocketsHttpHandler { UseProxy = false, ConnectCallback = ColituPinnedHosts.ConnectAsync })) { Timeout = TimeSpan.FromMinutes(30) };
     private readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public event Action<ColituUpdateInfo>? UpdateAvailable;
+
+    /// <summary>The release manifest is a few hundred bytes.</summary>
+    internal const int MaxManifestBytes = 256 * 1024;
 
     /// <summary>The installer is about 100 MB; anything far larger is not a Colitu release.</summary>
     private const long MaxPackageBytes = 512L << 20;

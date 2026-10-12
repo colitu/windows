@@ -111,7 +111,7 @@ public static class ColituNotices
                 continue;
             }
             var url = notice.Url?.Trim();
-            var safe = ColituShell.IsSafeLink(url, allowMail: false);
+            var safe = IsAllowedLink(url);
             var button = safe ? Clip(notice.Button, MaxButton) : "";
             result.Add(new ColituNotice
             {
@@ -127,6 +127,35 @@ public static class ColituNotices
             });
         }
         return result;
+    }
+
+    /// <summary>
+    /// A notice link opens only on Colitu's own sites: plain https (see <see cref="ColituShell.IsSafeLink"/>)
+    /// to colitu.com, a subdomain of it, or one of the mirror origins embedded by the build. A panel
+    /// that was taken over cannot send the user to a look-alike page behind an app-branded banner.
+    /// </summary>
+    /// <param name="mirrorOrigins">Mirror origins; null takes the ones embedded by the build.</param>
+    public static bool IsAllowedLink(string? url, IEnumerable<string>? mirrorOrigins = null)
+    {
+        if (!ColituShell.IsSafeLink(url, allowMail: false) || !Uri.TryCreate(url!.Trim(), UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+        var host = uri.IdnHost.TrimEnd('.').ToLowerInvariant();
+        if (host == "colitu.com" || host.EndsWith(".colitu.com", StringComparison.Ordinal))
+        {
+            return true;
+        }
+        foreach (var origin in mirrorOrigins ?? ColituEndpointList.BuiltInMirrors)
+        {
+            if (Uri.TryCreate(origin, UriKind.Absolute, out var mirror)
+                && mirror.Scheme == Uri.UriSchemeHttps
+                && string.Equals(mirror.IdnHost.TrimEnd('.'), host, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static string NormalizeLevel(string? level)

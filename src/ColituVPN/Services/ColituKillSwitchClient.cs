@@ -35,7 +35,10 @@ public sealed class ColituKillSwitchClient
             throw new ArgumentException($"Invalid kill-switch request: {invalid}");
         }
 
-        using var pipe = new NamedPipeClientStream(".", KsProtocol.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        // Identification only: whatever serves the pipe can never act with this elevated app's
+        // token (the default would allow full impersonation by a process with SeImpersonate).
+        using var pipe = new NamedPipeClientStream(".", KsProtocol.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous,
+            System.Security.Principal.TokenImpersonationLevel.Identification);
         using (var connect = CancellationTokenSource.CreateLinkedTokenSource(token))
         {
             connect.CancelAfter(ConnectTimeout);

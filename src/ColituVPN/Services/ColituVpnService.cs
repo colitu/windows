@@ -245,7 +245,7 @@ public sealed class ColituVpnService
         var network = CurrentNetworkKey();
         var measured = await ColituLatency.MeasureAllAsync(servers);
         var at = DateTimeOffset.UtcNow;
-        foreach (var server in servers.Where(ColituLatency.CanProbe))
+        foreach (var server in ColituLatency.ProbeTargets(servers))
         {
             _pings[server.Id!] = new ColituPingSample(measured.TryGetValue(server.Id!, out var ms) ? ms : null, at, network);
             // Every measurement is a probe event (the last one of each hour per node is kept); routes are not nodes.
@@ -850,7 +850,8 @@ public sealed class ColituVpnService
                 DevicePaused = paused;
                 throw new ColituDevicePausedException(paused);
             }
-            throw new ColituConnectException(LastError, ex);
+            // Keep "this computer has no internet": ConnectAsync does not count that as a failed connect.
+            throw new ColituConnectException(LastError, ex, ColituConnectException.IsOffline(ex));
         }
     }
 
@@ -918,7 +919,7 @@ public sealed class ColituVpnService
         var items = config.Candidates
             .Select(candidate => (candidate.Protocol, Item: FmtHandler.ResolveConfig(candidate.ShareLink, out _)))
             .Where(item => item.Item != null && item.Protocol.IsNotEmpty())
-            .Select(item => (item.Protocol, Item: item.Item!))
+            .Select(item => (item.Protocol, Item: ColituWarmSpare.NormalizeSpareProfile(item.Item!)))
             .ToList();
         return items.Count == 0 ? null : new ColituSpareServer(serverId, items, config, cached);
     }
@@ -3792,7 +3793,11 @@ public sealed class ColituVpnService
                     var spareTask = spareVerify == null ? null
                         : ProbeThroughLocalProxyAsync(spareVerify.Port, rounds, token, roundTimeout: roundTimeout, credentials: new NetworkCredential(spareVerify.User, spareVerify.Password));
                     var probe = await primaryTask;
-                    var spareProbe = spareTask == null ? null : await spareTask;
+                    // A primary that passed wins the round: the spare's answer is not waited for (an
+                    // unreachable spare held every such connect for its whole round timeout, ~6 s).
+                    var spareProbe = spareTask == null ? null
+                        : probe.Success ? (spareTask.IsCompletedSuccessfully ? spareTask.Result : null)
+                        : await spareTask;
                     var graceOk = false;
                     if (!probe.Success && spareProbe is { Success: true } && _verifyInbound is { } verify)
                     {
@@ -4236,14 +4241,15 @@ public sealed class ColituVpnService
         var listening = false;
         while (started.Elapsed < TimeSpan.FromSeconds(12))
         {
-            await Task.Delay(250, token);
+            // The listener table answers at once, so a short poll costs nothing.
+            await Task.Delay(100, token);
             if (!CoreManager.Instance.IsCoreRunning)
             {
                 throw new InvalidOperationException(_lastCoreMessage.IsNotEmpty()
                     ? $"VPN core failed to start: {_lastCoreMessage}"
                     : $"VPN core failed to start. Check core executable and config path: {coreExe}, {configPath}");
             }
-            if (await IsLocalPortOpenAsync(Global.Loopback, socksPort))
+            if (await IsLocalPortListeningAsync(socksPort))
             {
                 listening = true;
                 break;
@@ -4281,7 +4287,7 @@ public sealed class ColituVpnService
     private async Task EnsureLocalPortsFreeAsync()
     {
         var socksPort = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
-        if (!await IsLocalPortOpenAsync(Global.Loopback, socksPort))
+        if (!await IsLocalPortListeningAsync(socksPort))
         {
             return;
         }
@@ -4292,7 +4298,7 @@ public sealed class ColituVpnService
         for (var attempt = 0; attempt < 10; attempt++)
         {
             await Task.Delay(400);
-            if (!await IsLocalPortOpenAsync(Global.Loopback, socksPort))
+            if (!await IsLocalPortListeningAsync(socksPort))
             {
                 return;
             }
@@ -4348,7 +4354,7 @@ public sealed class ColituVpnService
         }
 
         var socksPort = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
-        if (!await IsLocalPortOpenAsync(Global.Loopback, socksPort))
+        if (!await IsLocalPortListeningAsync(socksPort))
         {
             throw new InvalidOperationException($"VPN local proxy port {socksPort} is not listening.");
         }
@@ -4501,13 +4507,35 @@ public sealed class ColituVpnService
         return false;
     }
 
-    private static async Task<bool> IsLocalPortOpenAsync(string host, int port)
+    /// <summary>
+    /// Whether a TCP listener holds the local <paramref name="port"/> (on loopback or any address),
+    /// read from the listener table without connecting: on Windows a connect to a closed loopback
+    /// port is retried for about a second instead of failing at once, which cost 1.5 s on every
+    /// core start (2.8.6). Only when the table cannot be read, a short loopback connect.
+    /// </summary>
+    internal static async Task<bool> IsLocalPortListeningAsync(int port)
+    {
+        try
+        {
+            return IsListening(IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners(), port);
+        }
+        catch (Exception ex) when (ex is NetworkInformationException or InvalidOperationException or PlatformNotSupportedException)
+        {
+            return await CanConnectLocalAsync(port, TimeSpan.FromMilliseconds(300));
+        }
+    }
+
+    internal static bool IsListening(IEnumerable<IPEndPoint> listeners, int port) =>
+        listeners.Any(endpoint => endpoint.Port == port
+            && (IPAddress.IsLoopback(endpoint.Address) || endpoint.Address.Equals(IPAddress.Any) || endpoint.Address.Equals(IPAddress.IPv6Any)));
+
+    private static async Task<bool> CanConnectLocalAsync(int port, TimeSpan timeout)
     {
         try
         {
             using var client = new TcpClient();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-            await client.ConnectAsync(host, port, timeout.Token);
+            using var cancel = new CancellationTokenSource(timeout);
+            await client.ConnectAsync(IPAddress.Loopback, port, cancel.Token);
             return client.Connected;
         }
         catch
@@ -4782,6 +4810,19 @@ public sealed class ColituConnectException(string message, Exception? inner = nu
 {
     /// <summary>The device itself had no internet: no server or transport is to blame.</summary>
     public bool Offline { get; } = offline;
+
+    /// <summary>Whether <paramref name="ex"/> or one of its inner exceptions is an offline <see cref="ColituConnectException"/>.</summary>
+    public static bool IsOffline(Exception? ex)
+    {
+        for (; ex != null; ex = ex.InnerException)
+        {
+            if (ex is ColituConnectException { Offline: true })
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 public sealed class ColituDashboardData

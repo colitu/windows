@@ -283,6 +283,21 @@ public class ColituInsightsTests : IDisposable
     }
 
     [Fact]
+    public void Recovery_StartedButNeverEnded_CountsNothing_EvenAfterARestart()
+    {
+        var insights = Create();
+        insights.BeginRecovery().Should().BeTrue();
+        insights.BeginRecovery().Should().BeFalse();      // already open: ignored
+        insights.BeginRecovery().Should().BeFalse();
+        insights.BuildReport(Now, "2.9.0", true).Should().BeNull();          // nothing counted at the start
+
+        // The app closed in the middle of the recovery: the next run starts with nothing open.
+        var restarted = Create();
+        restarted.EndRecovery(true).Should().BeNull();
+        restarted.BuildReport(Now, "2.9.0", true).Should().BeNull();
+    }
+
+    [Fact]
     public void Recovery_GivenUp_IsCountedWithoutSuccess_AndAbandonedCountsNothing()
     {
         var insights = Create();

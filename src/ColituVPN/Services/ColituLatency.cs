@@ -17,24 +17,55 @@ public static class ColituLatency
     private const int TimeoutMs = 2500;
     private const int IpUnicastIf = 31;
 
-    /// <summary>Pings of every server with a probe address, by server id.</summary>
+    /// <summary>At most this many servers are pinged per round (a bigger list is cut, not dialled).</summary>
+    internal const int MaxProbes = 200;
+
+    /// <summary>At most this many pings run at the same time.</summary>
+    internal const int MaxConcurrency = 8;
+
+    /// <summary>
+    /// TCP ports a node's probe address may use. A tampered server list cannot point the ping at
+    /// other services (SMB, RDP, mail...) to scan them from this PC's address.
+    /// </summary>
+    internal static readonly IReadOnlySet<int> AllowedPorts =
+        new HashSet<int> { 443, 2053, 2083, 2087, 2096, 3443, 4433, 7443, 8388, 8443, 9443 };
+
+    /// <summary>Pings of every server with a probe address (see <see cref="ProbeTargets"/>), by server id.</summary>
     public static async Task<Dictionary<string, int>> MeasureAllAsync(IEnumerable<ColituVpnServer> servers)
     {
         var index = ColituNetwork.PhysicalInterfaceIndex();
-        var probes = servers
-            .Where(CanProbe)
-            .GroupBy(server => server.Id!, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .Select(async server => (server.Id!, await MeasureAsync(server.Host!, server.Port!.Value, index)));
+        using var gate = new SemaphoreSlim(MaxConcurrency);
+        var probes = ProbeTargets(servers)
+            .Select(async server =>
+            {
+                await gate.WaitAsync();
+                try
+                {
+                    return (server.Id!, await MeasureAsync(server.Host!, server.Port!.Value, index));
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            });
         var results = await Task.WhenAll(probes);
         return results
             .Where(result => result.Item2 != null)
             .ToDictionary(result => result.Item1, result => result.Item2!.Value, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>The servers one round pings: those with a probe address, one per id, at most <see cref="MaxProbes"/>.</summary>
+    public static List<ColituVpnServer> ProbeTargets(IEnumerable<ColituVpnServer> servers) =>
+        servers
+            .Where(CanProbe)
+            .GroupBy(server => server.Id!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Take(MaxProbes)
+            .ToList();
+
     /// <summary>The server has a probe address: a missing result from <see cref="MeasureAllAsync"/> means the ping failed.</summary>
     public static bool CanProbe(ColituVpnServer server) =>
-        server.Id.IsNotEmpty() && server.Host.IsNotEmpty() && server.Port is > 0 and < 65536;
+        server.Id.IsNotEmpty() && server.Host.IsNotEmpty() && server.Port is { } port && AllowedPorts.Contains(port);
 
     public static async Task<int?> MeasureAsync(string host, int port, int? interfaceIndex)
     {

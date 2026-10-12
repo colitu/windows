@@ -110,7 +110,7 @@ public partial class ColituMainWindow
 
     private void NoticeAction_Click(object sender, RoutedEventArgs e)
     {
-        if (_shownNotice is not { HasButton: true } notice)
+        if (_shownNotice is not { HasButton: true } notice || !ColituNotices.IsAllowedLink(notice.Url))
         {
             return;
         }

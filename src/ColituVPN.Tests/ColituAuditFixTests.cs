@@ -62,6 +62,58 @@ public class ColituAuditFixTests
         ColituLatency.IsPublic(IPAddress.Parse(address)).Should().Be(allowed);
     }
 
+    [Theory]
+    [InlineData(443, true)]
+    [InlineData(2053, true)]
+    [InlineData(3443, true)]
+    [InlineData(8388, true)]
+    [InlineData(9443, true)]
+    [InlineData(22, false)]
+    [InlineData(80, false)]
+    [InlineData(445, false)]
+    [InlineData(3389, false)]
+    [InlineData(0, false)]
+    [InlineData(70000, false)]
+    public void Latency_OnlyProbesAllowedPorts(int port, bool allowed)
+    {
+        var server = new ColituVpnServer { Id = "n1", Host = "node.example.test", Port = port };
+        ColituLatency.CanProbe(server).Should().Be(allowed);
+    }
+
+    [Fact]
+    public void Latency_ProbesAtMost200ServersOncePerId()
+    {
+        var servers = Enumerable.Range(0, 500)
+            .Select(i => new ColituVpnServer { Id = "n" + (i % 300), Host = "node.example.test", Port = 443 })
+            .Append(new ColituVpnServer { Id = "", Host = "node.example.test", Port = 443 })
+            .ToList();
+        var targets = ColituLatency.ProbeTargets(servers);
+        targets.Should().HaveCount(ColituLatency.MaxProbes);
+        targets.Select(server => server.Id).Should().OnlyHaveUniqueItems();
+        ColituLatency.MaxProbes.Should().Be(200);
+        ColituLatency.MaxConcurrency.Should().Be(8);
+    }
+
+    [Fact]
+    public void ServerList_IsCappedAtMaxServers()
+    {
+        var routes = Enumerable.Range(0, ColituApiClient.MaxServers + 500)
+            .Select(i => new ColituServerDto { Id = "r" + i, Multihop = true, Entry = new ColituRouteEndpointDto(), Exit = new ColituRouteEndpointDto() });
+        ColituApiClient.MapMultihop(routes).Should().HaveCount(ColituApiClient.MaxServers);
+    }
+
+    [Theory]
+    [InlineData("127.0.0.1")]
+    [InlineData("192.168.1.1")]
+    [InlineData("10.0.0.1")]
+    [InlineData("169.254.169.254")]
+    [InlineData("100.100.1.1")]
+    [InlineData("239.1.1.1")]
+    public async Task Latency_NeverDialsLocalAddresses_AfterResolving(string host)
+    {
+        (await ColituLatency.MeasureAsync(host, 443, null)).Should().BeNull();
+    }
+
     [Fact]
     public void Redact_MasksQuerySecretsEmailsTokensAndUrlCredentials()
     {

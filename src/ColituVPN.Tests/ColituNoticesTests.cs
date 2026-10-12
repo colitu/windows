@@ -239,4 +239,30 @@ public class ColituNoticesTests
             File.Delete(path);
         }
     }
+
+    [Theory]
+    [InlineData("https://colitu.com/pricing", true)]
+    [InlineData("https://www.colitu.com/x", true)]
+    [InlineData("https://docs.colitu.com/en", true)]
+    [InlineData("https://COLITU.COM/", true)]
+    [InlineData("https://mirror.example.test/account", true)]
+    [InlineData("https://evil.example.test/", false)]
+    [InlineData("https://colitu.com.example.test/", false)]
+    [InlineData("https://notcolitu.com/", false)]
+    [InlineData("https://colitu.co/", false)]
+    [InlineData("https://user@colitu.com/", false)]
+    [InlineData("http://colitu.com/", false)]
+    [InlineData("http://mirror.example.test/", false)]
+    public void NoticeLinks_OnlyOpenColituAndMirrorHosts(string url, bool allowed)
+    {
+        ColituNotices.IsAllowedLink(url, ["https://mirror.example.test"]).Should().Be(allowed);
+    }
+
+    [Fact]
+    public void ForeignNoticeLink_RemovesTheButton()
+    {
+        var notice = ColituNotices.Parse("""{"notices":[{"id":"x","title":"t","button":"Open","url":"https://login.example.test/colitu"}]}""").Single();
+        notice.Url.Should().BeNull();
+        notice.HasButton.Should().BeFalse();
+    }
 }

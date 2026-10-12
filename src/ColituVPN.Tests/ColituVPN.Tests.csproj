@@ -30,4 +30,9 @@
     <ProjectReference Include="..\ColituKillSwitchService\ColituKillSwitchService.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Core config contexts for generator tests (warm spare outbounds). -->
+    <Compile Include="..\ServiceLib.Tests\CoreConfig\CoreConfigTestFactory.cs" Link="Shared\CoreConfigTestFactory.cs" />
+  </ItemGroup>
+
 </Project>
