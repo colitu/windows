@@ -859,6 +859,7 @@ public sealed class ColituVpnService
             }
             ResetHealthChecks();
             _killSwitchHeldFromPreviousRun = false;
+            _killSwitchHeldAfterFailure = false;
             await ApplyKillSwitchForConnectedTunnelAsync();
             SetStatus(ColituVpnStatus.Connected);
             EmitConnectEvent(true, connectWatch.ElapsedMilliseconds, automatic, server, null);
@@ -887,12 +888,21 @@ public sealed class ColituVpnService
             {
                 EmitConnectEvent(false, connectWatch.ElapsedMilliseconds, automatic, server, ex);
             }
-            // Engaged by this attempt (not by a lost tunnel): a failed manual connect must not
-            // leave the computer offline.
-            if (killSwitchEngagedHere || IsDevicePaused(ex))
+            // Fail-closed: with the kill switch on, a connect that fails (every server and transport
+            // tried, or no internet) keeps it armed, so the real address never leaves. This app and
+            // the cores stay allowed through it: a retry works, and Disconnect (or turning the kill
+            // switch off, or quitting) opens the internet again.
+            var devicePaused = IsDevicePaused(ex);
+            var noPlan = ex is ColituApiException planApi && IsPlanError(planApi);
+            if (KillSwitchEngaged && ReleaseKillSwitchAfterFailure(Preferences.KillSwitchEnabled, devicePaused, noPlan))
             {
-                // A paused device never keeps the internet closed: there is nothing to reconnect to.
-                await ReleaseKillSwitchAsync(IsDevicePaused(ex) ? "device paused" : "connection failed");
+                // A paused device or no plan never keeps the internet closed: there is nothing to reconnect to.
+                await ReleaseKillSwitchAsync(devicePaused ? "device paused" : noPlan ? "no active plan" : "connection failed, kill switch is off");
+            }
+            else if (KillSwitchEngaged)
+            {
+                _killSwitchHeldAfterFailure = true;
+                LogConnection("Connection failed: the kill switch stays armed (fail-closed) until a retry connects or the user disconnects");
             }
             await StopCoreAsync();
             await SysProxyHandler.UpdateSysProxy(_config, true);
@@ -3152,6 +3162,19 @@ public sealed class ColituVpnService
     /// <summary>The internet stays blocked because Colitu closed while connected (crash, power loss).</summary>
     public bool KillSwitchHeldAfterCrash => _killSwitchHeldFromPreviousRun && KillSwitchEngaged;
 
+    /// <summary>A connect failed with the kill switch on: the internet stays closed until a retry connects or the user disconnects.</summary>
+    private volatile bool _killSwitchHeldAfterFailure;
+
+    /// <summary>The internet stays blocked because a connect failed (fail-closed); no automatic retry runs.</summary>
+    public bool KillSwitchHeldAfterFailure => _killSwitchHeldAfterFailure && KillSwitchEngaged && Status == ColituVpnStatus.Error;
+
+    /// <summary>
+    /// Fail-closed: whether a failed connect releases an armed kill switch. Only when there is
+    /// nothing to reconnect to (device paused, no plan) or the kill switch was turned off.
+    /// </summary>
+    internal static bool ReleaseKillSwitchAfterFailure(bool killSwitchEnabled, bool devicePaused, bool planError)
+        => !killSwitchEnabled || devicePaused || planError;
+
     /// <summary>
     /// With the kill switch on, it stays armed for the whole session in both modes: from before the
     /// first packet of a connection until the user disconnects. In proxy mode that also means apps
@@ -3272,6 +3295,7 @@ public sealed class ColituVpnService
         try
         {
             _killSwitchHeldFromPreviousRun = false;
+            _killSwitchHeldAfterFailure = false;
             if (_serviceArmed)
             {
                 try
