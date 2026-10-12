@@ -205,6 +205,20 @@ public sealed class ColituVpnService
     /// Going Simple with a multihop route picked, the next connect uses the automatic choice; a live
     /// connection is not touched.
     /// </summary>
+    /// <summary>Order of the Locations list (<see cref="ColituLocationSort"/>); kept with the other preferences.</summary>
+    public string LocationSort => ColituLocationSort.Normalize(Preferences.LocationSort);
+
+    public void SetLocationSort(string mode)
+    {
+        mode = ColituLocationSort.Normalize(mode);
+        if (mode == Preferences.LocationSort)
+        {
+            return;
+        }
+        _session = _session with { Preferences = _session.Preferences with { LocationSort = mode } };
+        SaveState();
+    }
+
     public void SetAdvancedMode(bool advanced)
     {
         _session = _session with { Preferences = _session.Preferences with { AdvancedMode = advanced } };
@@ -235,18 +249,33 @@ public sealed class ColituVpnService
     /// </summary>
     public async Task<Dictionary<string, int>> MeasurePingsAsync(IReadOnlyCollection<ColituVpnServer> servers)
     {
-        if (Status is ColituVpnStatus.Connected or ColituVpnStatus.Reconnecting && ColituNetwork.PhysicalInterfaceIndex() is not > 0)
+        var connected = Status is ColituVpnStatus.Connected or ColituVpnStatus.Reconnecting;
+        if (connected && ColituNetwork.PhysicalInterfaceIndex() is not > 0)
         {
             // With the tunnel up a probe that cannot be pinned to the physical adapter goes through the
             // tunnel and measures the distance to the exit, not to the server: the exit's own country
             // would look closest. Keep the old numbers.
+            LogConnection("Pings skipped while connected: no physical adapter to measure outside the tunnel");
             return [];
         }
         var network = CurrentNetworkKey();
-        var measured = await ColituLatency.MeasureAllAsync(servers);
+        // Connected: every probe must be pinned to the physical adapter (a socket that cannot be is
+        // not dialled), and in TUN mode the core sends any probe of this app that still reaches the
+        // adapter straight out (ColituPingRoute). The numbers are this PC's own path to the servers.
+        var round = await ColituLatency.MeasureRoundAsync(servers, requirePin: connected);
+        var measured = round.Ms;
         var at = DateTimeOffset.UtcNow;
+        if (connected)
+        {
+            LogConnection($"Pings measured while connected, direct (outside the tunnel) via adapter #{round.InterfaceIndex}{(EffectiveTunMode ? ", TUN ping route" : "")}: {measured.Count} ok, {round.Unpinned.Count} not pinned (kept old values)");
+        }
         foreach (var server in ColituLatency.ProbeTargets(servers))
         {
+            if (round.Unpinned.Contains(server.Id!))
+            {
+                // Not measured: keep the previous sample instead of recording a failure.
+                continue;
+            }
             _pings[server.Id!] = new ColituPingSample(measured.TryGetValue(server.Id!, out var ms) ? ms : null, at, network);
             // Every measurement is a probe event (the last one of each hour per node is kept); routes are not nodes.
             if (!server.IsMultihop)
@@ -1013,6 +1042,7 @@ public sealed class ColituVpnService
     /// </summary>
     private string PostProcessConfig(CoreConfigContext context, string json)
     {
+        json = ApplyPingRoute(context, json);
         json = ApplyWarmSpare(context, json);
         if (_checkIndexId == null || !string.Equals(context.Node?.IndexId, _checkIndexId, StringComparison.Ordinal))
         {
@@ -1031,6 +1061,35 @@ public sealed class ColituVpnService
         catch (Exception ex)
         {
             Logging.SaveLog("ColituVpnService.AddCheckInbound", ex);
+        }
+        return json;
+    }
+
+    /// <summary>
+    /// Every sing-box config that runs the TUN adapter (sing-box alone or the TUN front of an Xray
+    /// tunnel) sends the app's own probe connections direct (<see cref="ColituPingRoute"/>).
+    /// </summary>
+    private string ApplyPingRoute(CoreConfigContext context, string json)
+    {
+        if (context.RunCoreType != ECoreType.sing_box || !context.IsTunEnabled)
+        {
+            return json;
+        }
+        try
+        {
+            if (ColituPingRoute.ApplySingbox(json, ColituPingRoute.AppProcessName) is { } routed)
+            {
+                if (!ReferenceEquals(routed, json))
+                {
+                    LogConnection($"Ping route: {ColituPingRoute.AppProcessName} TCP to the probe ports goes direct in the TUN config (profile {context.Node?.IndexId})");
+                }
+                return routed;
+            }
+            LogConnection("Ping route could not be added to the TUN config; pings rely on the adapter pin");
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("ColituVpnService.ApplyPingRoute", ex);
         }
         return json;
     }
@@ -5140,7 +5199,9 @@ public sealed record ColituVpnPreferences(
     // Advanced mode shows split tunnelling, connection mode, kill switch and the other expert settings.
     // On here, so users updating from a version without the setting keep what they saw; new installs
     // start in Simple mode (ForNewInstall).
-    bool AdvancedMode = true)
+    bool AdvancedMode = true,
+    // Order of the Locations list: name (the order before 2.9), ping or load (ColituLocationSort).
+    string LocationSort = ColituLocationSort.Name)
 {
     /// <summary>
     /// Preferences of a first run (no saved state yet): privacy mode on, Simple mode. The record
@@ -5165,7 +5226,8 @@ public sealed record ColituVpnPreferences(
             SplitTunnelNetworks = ColituSplitTunnel.NormalizeList(SplitTunnelNetworks, ColituSplitTunnel.NormalizeNetwork, ColituSplitTunnel.MaxNetworks),
             SplitTunnelMode = ColituSplitTunnelModes.Normalize(SplitTunnelMode),
             Language = language,
-            ConnectionMode = connectionMode
+            ConnectionMode = connectionMode,
+            LocationSort = ColituLocationSort.Normalize(LocationSort)
         };
     }
 

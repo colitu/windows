@@ -31,7 +31,15 @@ public static class ColituLatency
         new HashSet<int> { 443, 2053, 2083, 2087, 2096, 3443, 4433, 7443, 8388, 8443, 9443 };
 
     /// <summary>Pings of every server with a probe address (see <see cref="ProbeTargets"/>), by server id.</summary>
-    public static async Task<Dictionary<string, int>> MeasureAllAsync(IEnumerable<ColituVpnServer> servers)
+    public static async Task<Dictionary<string, int>> MeasureAllAsync(IEnumerable<ColituVpnServer> servers) =>
+        (await MeasureRoundAsync(servers, requirePin: false)).Ms;
+
+    /// <summary>
+    /// One ping round. With <paramref name="requirePin"/> (the VPN is up) a probe whose socket
+    /// cannot be pinned to the physical adapter is not dialled at all: it would measure the tunnel.
+    /// Such servers are listed in <see cref="ColituPingRound.Unpinned"/>, not counted as failed.
+    /// </summary>
+    public static async Task<ColituPingRound> MeasureRoundAsync(IEnumerable<ColituVpnServer> servers, bool requirePin)
     {
         var index = ColituNetwork.PhysicalInterfaceIndex();
         using var gate = new SemaphoreSlim(MaxConcurrency);
@@ -41,7 +49,8 @@ public static class ColituLatency
                 await gate.WaitAsync();
                 try
                 {
-                    return (server.Id!, await MeasureAsync(server.Host!, server.Port!.Value, index));
+                    var (ms, unpinned) = await MeasureAsync(server.Host!, server.Port!.Value, index, requirePin);
+                    return (Id: server.Id!, Ms: ms, Unpinned: unpinned);
                 }
                 finally
                 {
@@ -49,9 +58,11 @@ public static class ColituLatency
                 }
             });
         var results = await Task.WhenAll(probes);
-        return results
-            .Where(result => result.Item2 != null)
-            .ToDictionary(result => result.Item1, result => result.Item2!.Value, StringComparer.OrdinalIgnoreCase);
+        return new ColituPingRound(
+            results.Where(result => result.Ms != null)
+                .ToDictionary(result => result.Id, result => result.Ms!.Value, StringComparer.OrdinalIgnoreCase),
+            results.Where(result => result.Unpinned).Select(result => result.Id).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            index);
     }
 
     /// <summary>The servers one round pings: those with a probe address, one per id, at most <see cref="MaxProbes"/>.</summary>
@@ -67,8 +78,16 @@ public static class ColituLatency
     public static bool CanProbe(ColituVpnServer server) =>
         server.Id.IsNotEmpty() && server.Host.IsNotEmpty() && server.Port is { } port && AllowedPorts.Contains(port);
 
-    public static async Task<int?> MeasureAsync(string host, int port, int? interfaceIndex)
+    public static async Task<int?> MeasureAsync(string host, int port, int? interfaceIndex) =>
+        (await MeasureAsync(host, port, interfaceIndex, requirePin: false)).Ms;
+
+    /// <summary>Best of two connects; <c>Unpinned</c> when <paramref name="requirePin"/> kept the probe from dialling.</summary>
+    public static async Task<(int? Ms, bool Unpinned)> MeasureAsync(string host, int port, int? interfaceIndex, bool requirePin)
     {
+        if (requirePin && interfaceIndex is not > 0)
+        {
+            return (null, true);
+        }
         IPAddress? address;
         try
         {
@@ -79,23 +98,27 @@ public static class ColituLatency
         }
         catch
         {
-            return null;
+            return (null, false);
         }
         if (address == null || address.AddressFamily != AddressFamily.InterNetwork || !IsPublic(address))
         {
-            return null;
+            return (null, false);
         }
 
         int? best = null;
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var ms = await ConnectMsAsync(address, port, interfaceIndex);
+            var (ms, unpinned) = await ProbeAsync(address, port, interfaceIndex, requirePin, TimeoutMs);
+            if (unpinned)
+            {
+                return (null, true);
+            }
             if (ms != null && (best == null || ms < best))
             {
                 best = ms;
             }
         }
-        return best;
+        return (best, false);
     }
 
     /// <summary>
@@ -116,11 +139,19 @@ public static class ColituLatency
     }
 
     /// <summary>TCP connect time in ms over the adapter <paramref name="interfaceIndex"/>; null when it fails or times out.</summary>
-    internal static async Task<int?> ConnectMsAsync(IPAddress address, int port, int? interfaceIndex, int timeoutMs = TimeoutMs)
+    internal static async Task<int?> ConnectMsAsync(IPAddress address, int port, int? interfaceIndex, int timeoutMs = TimeoutMs) =>
+        (await ProbeAsync(address, port, interfaceIndex, requirePin: false, timeoutMs)).Ms;
+
+    /// <summary>
+    /// One connect. <c>Unpinned</c>: <paramref name="requirePin"/> was set and the socket could not be
+    /// pinned to the adapter, so nothing was dialled.
+    /// </summary>
+    internal static async Task<(int? Ms, bool Unpinned)> ProbeAsync(IPAddress address, int port, int? interfaceIndex, bool requirePin, int timeoutMs)
     {
         try
         {
             using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            var pinned = false;
             if (interfaceIndex is > 0)
             {
                 try
@@ -128,21 +159,29 @@ public static class ColituLatency
                     // IPv4 IP_UNICAST_IF takes the index in network byte order.
                     socket.SetSocketOption(SocketOptionLevel.IP, (SocketOptionName)IpUnicastIf,
                         BitConverter.GetBytes(IPAddress.HostToNetworkOrder(interfaceIndex.Value)));
+                    pinned = true;
                 }
                 catch (SocketException)
                 {
                     // Not pinned: the measurement still works, possibly through the tunnel.
                 }
             }
+            if (requirePin && !pinned)
+            {
+                return (null, true);
+            }
             using var timeout = new CancellationTokenSource(timeoutMs);
             var watch = Stopwatch.StartNew();
             await socket.ConnectAsync(new IPEndPoint(address, port), timeout.Token);
             watch.Stop();
-            return Math.Max(1, (int)watch.ElapsedMilliseconds);
+            return (Math.Max(1, (int)watch.ElapsedMilliseconds), false);
         }
         catch
         {
-            return null;
+            return (null, false);
         }
     }
 }
+
+/// <summary>One ping round: successful pings by server id, servers not dialled because the socket could not be pinned, the adapter used.</summary>
+public sealed record ColituPingRound(Dictionary<string, int> Ms, IReadOnlySet<string> Unpinned, int? InterfaceIndex);

@@ -196,6 +196,10 @@ public sealed class Loc : INotifyPropertyChanged
         ["locations.sub"] = ["Серверов онлайн: {n}. При смене локации подключение переключится автоматически.", "Çevrimiçi sunucu: {n}. Konumu değiştirdiğinizde bağlantı otomatik olarak geçer.", "{n} servers online. Switching location moves your connection automatically."],
         ["locations.search"] = ["Поиск страны или города", "Ülke veya şehir ara", "Search country or city"],
         ["locations.empty"] = ["Ничего не найдено", "Sonuç bulunamadı", "Nothing found"],
+        ["locations.sortTitle"] = ["Сортировка", "Sıralama", "Sort by"],
+        ["locations.sort.name"] = ["По названию", "Ada göre", "By name"],
+        ["locations.sort.ping"] = ["По пингу", "Ping’e göre", "By ping"],
+        ["locations.sort.load"] = ["По нагрузке", "Yüke göre", "By load"],
         ["locations.switching"] = ["Переключаемся на {server}…", "{server} konumuna geçiliyor…", "Switching to {server}…"],
         ["locations.switched"] = ["Подключено: {server}", "Bağlandı: {server}", "Connected to {server}"],
 

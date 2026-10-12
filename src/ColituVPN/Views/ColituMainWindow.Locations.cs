@@ -51,6 +51,55 @@ public partial class ColituMainWindow
         {
             _buildingCategories = false;
         }
+        BuildSortOptions();
+    }
+
+    /// <summary>The sort picker next to the search box: name / ping / load (<see cref="ColituLocationSort"/>).</summary>
+    private void BuildSortOptions()
+    {
+        if (SortList == null)
+        {
+            return;
+        }
+        _buildingCategories = true;
+        try
+        {
+            SortList.Children.Clear();
+            var current = _vpn.LocationSort;
+            foreach (var mode in ColituLocationSort.Modes)
+            {
+                var option = new RadioButton
+                {
+                    Content = Loc.I[ColituLocationSort.LabelKey(mode)],
+                    GroupName = "LocationSort",
+                    Tag = mode,
+                    Style = (Style)FindResource("SegmentOption"),
+                    IsChecked = mode == current,
+                    FontSize = 13,
+                    Padding = new Thickness(12, 6, 12, 6)
+                };
+                System.Windows.Automation.AutomationProperties.SetName(option, $"{Loc.I["locations.sortTitle"]}: {option.Content}");
+                option.Checked += Sort_Checked;
+                SortList.Children.Add(option);
+            }
+            SortHost.ToolTip = Loc.I["locations.sortTitle"];
+            System.Windows.Automation.AutomationProperties.SetName(SortHost, Loc.I["locations.sortTitle"]);
+        }
+        finally
+        {
+            _buildingCategories = false;
+        }
+    }
+
+    private void Sort_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_buildingCategories || sender is not RadioButton { Tag: string mode })
+        {
+            return;
+        }
+        _vpn.SetLocationSort(mode);
+        RenderServers();
+        FadeIn(ServerList, 8);
     }
 
     private void Category_Checked(object sender, RoutedEventArgs e)
@@ -111,7 +160,9 @@ public partial class ColituMainWindow
         var flat = query.Length > 0;
         var candidates = _servers.Where(server => (!filtered || server.Categories.Contains(_category))
             && (!flat || ColituServerRow.From(server).Matches(query)));
-        foreach (var group in ColituServerGroups.Build(candidates, ColituServerRow.CountryName, StringComparer.Create(Loc.I.Culture, true), flat))
+        var sort = _vpn.LocationSort;
+        int? PingOf(ColituVpnServer server) => _pings.TryGetValue(server.Id ?? "", out var ms) ? ms : null;
+        foreach (var group in ColituLocationSort.Groups(candidates, sort, PingOf, ColituServerRow.CountryName, Loc.I.Culture, flat))
         {
             if (group.IsSingle)
             {
@@ -139,7 +190,7 @@ public partial class ColituMainWindow
         if (!filtered && advanced)
         {
             var routes = new List<ColituServerRow>();
-            foreach (var route in _vpn.MultihopRoutes.OrderBy(s => s.Name ?? "", StringComparer.Create(Loc.I.Culture, true)))
+            foreach (var route in ColituLocationSort.Routes(_vpn.MultihopRoutes, sort, PingOf, Loc.I.Culture))
             {
                 var row = ColituServerRow.From(route, _pings.TryGetValue(route.Id ?? "", out var ping) ? ping : null);
                 if (query.Length > 0 && !row.Matches(query))

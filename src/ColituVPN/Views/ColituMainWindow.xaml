@@ -773,17 +773,23 @@
                     <Grid Margin="0,0,0,18">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="340" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Style="{StaticResource Kicker}" Text="{s:T locations.kicker}" />
                             <TextBlock Margin="0,10,0,0" Style="{StaticResource H1}" Text="{s:T locations.title}" />
                             <TextBlock x:Name="LocationsSubtitle" Margin="0,8,0,0" Style="{StaticResource Muted}" />
                         </StackPanel>
-                        <Grid Grid.Column="1" VerticalAlignment="Bottom">
-                            <TextBox x:Name="ServerSearchBox" Padding="42,0,16,0" Style="{StaticResource Field}" Tag="{s:T locations.search}" TextChanged="ServerSearch_TextChanged" />
-                            <Path Width="16" Height="16" Margin="16,0,0,0" HorizontalAlignment="Left" Data="{StaticResource IconSearch}" IsHitTestVisible="False" Stretch="Uniform" Stroke="{StaticResource DimBrush}" StrokeThickness="1.8" />
-                        </Grid>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Bottom" Orientation="Horizontal">
+                            <!-- Sort order (ColituLocationSort): name / ping / load, kept in the preferences. -->
+                            <Border x:Name="SortHost" Margin="0,0,12,0" VerticalAlignment="Center" Style="{StaticResource SegmentHost}">
+                                <StackPanel x:Name="SortList" Orientation="Horizontal" />
+                            </Border>
+                            <Grid Width="300">
+                                <TextBox x:Name="ServerSearchBox" Padding="42,0,16,0" Style="{StaticResource Field}" Tag="{s:T locations.search}" TextChanged="ServerSearch_TextChanged" />
+                                <Path Width="16" Height="16" Margin="16,0,0,0" HorizontalAlignment="Left" Data="{StaticResource IconSearch}" IsHitTestVisible="False" Stretch="Uniform" Stroke="{StaticResource DimBrush}" StrokeThickness="1.8" />
+                            </Grid>
+                        </StackPanel>
                     </Grid>
                     <Border x:Name="CategoryHost" Grid.Row="1" Margin="0,0,0,16" HorizontalAlignment="Left" Style="{StaticResource SegmentHost}">
                         <StackPanel x:Name="CategoryList" Orientation="Horizontal" />
