@@ -1,16 +1,16 @@
 namespace ServiceLib.ViewModels;
 
-public class AddServer2ViewModel : MyReactiveObject
+public partial class AddServer2ViewModel : MyReactiveObject
 {
     [Reactive]
-    public ProfileItem SelectedSource { get; set; }
+    public partial ProfileItem SelectedSource { get; set; }
 
     [Reactive]
-    public string? CoreType { get; set; }
+    public partial string? CoreType { get; set; }
 
-    public ReactiveCommand<Unit, Unit> BrowseServerCmd { get; }
-    public ReactiveCommand<Unit, Unit> EditServerCmd { get; }
-    public ReactiveCommand<Unit, Unit> SaveServerCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> BrowseServerCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> EditServerCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> SaveServerCmd { get; }
     public bool IsModified { get; set; }
 
     public AddServer2ViewModel(ProfileItem profileItem, Func<EViewAction, object?, Task<bool>>? updateView)

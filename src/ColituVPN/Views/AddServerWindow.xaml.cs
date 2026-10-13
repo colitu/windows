@@ -20,9 +20,9 @@ public partial class AddServerWindow
 
         cmbCoreType.ItemsSource = Global.CoreTypes.AppendEmpty();
         cmbNetwork.ItemsSource = Global.Networks;
-        if (ViewModel.SelectedSource.Network.IsNullOrEmpty() || !Global.Networks.Contains(ViewModel.SelectedSource.Network))
+        if (ViewModel.Network.IsNullOrEmpty() || !Global.Networks.Contains(ViewModel.Network))
         {
-            ViewModel.SelectedSource.Network = Global.DefaultNetwork;
+            ViewModel.Network = Global.DefaultNetwork;
         }
 
         cmbHeaderTypeRaw.ItemsSource = new List<string> { Global.None, Global.RawHeaderHttp };
@@ -202,7 +202,7 @@ public partial class AddServerWindow
                     this.Bind(ViewModel, vm => vm.Uot, v => v.togUotEnabled12.IsChecked).DisposeWith(disposables);
                     break;
             }
-            this.Bind(ViewModel, vm => vm.SelectedSource.Network, v => v.cmbNetwork.Text).DisposeWith(disposables);
+            this.Bind(ViewModel, vm => vm.Network, v => v.cmbNetwork.Text).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.RawHeaderType, v => v.cmbHeaderTypeRaw.Text).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.Host, v => v.txtRequestHostRaw.Text).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.Path, v => v.txtPathRaw.Text).DisposeWith(disposables);

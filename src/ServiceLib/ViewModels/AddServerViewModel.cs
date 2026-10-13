@@ -1,113 +1,116 @@
 namespace ServiceLib.ViewModels;
 
-public class AddServerViewModel : MyReactiveObject
+public partial class AddServerViewModel : MyReactiveObject
 {
     [Reactive]
-    public ProfileItem SelectedSource { get; set; }
+    public partial string Network { get; set; }
 
     [Reactive]
-    public string? CoreType { get; set; }
+    public partial ProfileItem SelectedSource { get; set; }
 
     [Reactive]
-    public string Cert { get; set; }
+    public partial string? CoreType { get; set; }
 
     [Reactive]
-    public string CertTip { get; set; }
+    public partial string Cert { get; set; }
 
     [Reactive]
-    public string CertSha { get; set; }
+    public partial string CertTip { get; set; }
 
     [Reactive]
-    public bool AllowInsecureCertFetch { get; set; }
+    public partial string CertSha { get; set; }
 
     [Reactive]
-    public string SalamanderPass { get; set; }
+    public partial bool AllowInsecureCertFetch { get; set; }
 
     [Reactive]
-    public int AlterId { get; set; }
+    public partial string SalamanderPass { get; set; }
 
     [Reactive]
-    public string Ports { get; set; }
+    public partial int AlterId { get; set; }
 
     [Reactive]
-    public int? UpMbps { get; set; }
+    public partial string Ports { get; set; }
 
     [Reactive]
-    public int? DownMbps { get; set; }
+    public partial int? UpMbps { get; set; }
 
     [Reactive]
-    public string HopInterval { get; set; }
+    public partial int? DownMbps { get; set; }
 
     [Reactive]
-    public string Flow { get; set; }
+    public partial string HopInterval { get; set; }
 
     [Reactive]
-    public string VmessSecurity { get; set; }
+    public partial string Flow { get; set; }
 
     [Reactive]
-    public string VlessEncryption { get; set; }
+    public partial string VmessSecurity { get; set; }
 
     [Reactive]
-    public string SsMethod { get; set; }
+    public partial string VlessEncryption { get; set; }
 
     [Reactive]
-    public string WgPublicKey { get; set; }
+    public partial string SsMethod { get; set; }
+
+    [Reactive]
+    public partial string WgPublicKey { get; set; }
 
     //[Reactive]
     //public string WgPresharedKey { get; set; }
     [Reactive]
-    public string WgInterfaceAddress { get; set; }
+    public partial string WgInterfaceAddress { get; set; }
 
     [Reactive]
-    public string WgReserved { get; set; }
+    public partial string WgReserved { get; set; }
 
     [Reactive]
-    public int WgMtu { get; set; }
+    public partial int WgMtu { get; set; }
 
     [Reactive]
-    public bool Uot { get; set; }
+    public partial bool Uot { get; set; }
 
     [Reactive]
-    public string CongestionControl { get; set; }
+    public partial string CongestionControl { get; set; }
 
     [Reactive]
-    public int? InsecureConcurrency { get; set; }
+    public partial int? InsecureConcurrency { get; set; }
 
     [Reactive]
-    public bool NaiveQuic { get; set; }
+    public partial bool NaiveQuic { get; set; }
 
     [Reactive]
-    public string RawHeaderType { get; set; }
+    public partial string RawHeaderType { get; set; }
 
     [Reactive]
-    public string Host { get; set; }
+    public partial string Host { get; set; }
 
     [Reactive]
-    public string Path { get; set; }
+    public partial string Path { get; set; }
 
     [Reactive]
-    public string XhttpMode { get; set; }
+    public partial string XhttpMode { get; set; }
 
     [Reactive]
-    public string XhttpExtra { get; set; }
+    public partial string XhttpExtra { get; set; }
 
     [Reactive]
-    public string GrpcAuthority { get; set; }
+    public partial string GrpcAuthority { get; set; }
 
     [Reactive]
-    public string GrpcServiceName { get; set; }
+    public partial string GrpcServiceName { get; set; }
 
     [Reactive]
-    public string GrpcMode { get; set; }
+    public partial string GrpcMode { get; set; }
 
     [Reactive]
-    public string KcpHeaderType { get; set; }
+    public partial string KcpHeaderType { get; set; }
 
     [Reactive]
-    public string KcpSeed { get; set; }
+    public partial string KcpSeed { get; set; }
 
     [Reactive]
-    public int? KcpMtu { get; set; }
+    public partial int? KcpMtu { get; set; }
 
     public string TransportHeaderType
     {
@@ -236,9 +239,9 @@ public class AddServerViewModel : MyReactiveObject
         }
     }
 
-    public ReactiveCommand<Unit, Unit> FetchCertCmd { get; }
-    public ReactiveCommand<Unit, Unit> FetchCertChainCmd { get; }
-    public ReactiveCommand<Unit, Unit> SaveCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> FetchCertCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> FetchCertChainCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> SaveCmd { get; }
 
     public AddServerViewModel(ProfileItem profileItem, Func<EViewAction, object?, Task<bool>>? updateView)
     {
@@ -264,9 +267,14 @@ public class AddServerViewModel : MyReactiveObject
         this.WhenAnyValue(x => x.CertSha)
             .Subscribe(_ => UpdateCertTip());
 
-        this.WhenAnyValue(x => x.SelectedSource.Network)
-            .Subscribe(_ =>
+        this.WhenAnyValue(x => x.Network)
+            .Subscribe(network =>
             {
+                // The transport fields below read SelectedSource.Network: keep it in step.
+                if (SelectedSource != null && network != null)
+                {
+                    SelectedSource.Network = network;
+                }
                 this.RaisePropertyChanged(nameof(TransportHeaderType));
                 this.RaisePropertyChanged(nameof(TransportHost));
                 this.RaisePropertyChanged(nameof(TransportPath));
@@ -287,6 +295,7 @@ public class AddServerViewModel : MyReactiveObject
             SelectedSource = JsonUtils.DeepCopy(profileItem);
         }
         CoreType = SelectedSource?.CoreType?.ToString();
+        Network = SelectedSource?.Network ?? Global.DefaultNetwork;
         Cert = SelectedSource?.Cert?.ToString() ?? string.Empty;
         CertSha = SelectedSource?.CertSha?.ToString() ?? string.Empty;
 
@@ -368,10 +377,11 @@ public class AddServerViewModel : MyReactiveObject
         SelectedSource.CoreType = CoreType.IsNullOrEmpty() ? null : (ECoreType)Enum.Parse(typeof(ECoreType), CoreType);
         SelectedSource.Cert = Cert.IsNullOrEmpty() ? string.Empty : Cert;
         SelectedSource.CertSha = CertSha.IsNullOrEmpty() ? string.Empty : CertSha;
-        if (!Global.Networks.Contains(SelectedSource.Network))
+        if (!Global.Networks.Contains(Network))
         {
-            SelectedSource.Network = Global.DefaultNetwork;
+            Network = Global.DefaultNetwork;
         }
+        SelectedSource.Network = Network;
 
         var transport = new TransportExtraItem
         {

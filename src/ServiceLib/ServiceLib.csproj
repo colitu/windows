@@ -9,7 +9,6 @@
 		<PackageReference Include="ReactiveUI">
 			<TreatAsUsed>true</TreatAsUsed>
 		</PackageReference>
-		<PackageReference Include="ReactiveUI.Fody" />
 		<PackageReference Include="sqlite-net-pcl" />
 		<PackageReference Include="NLog" />
 		<PackageReference Include="WebDav.Client" />

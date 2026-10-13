@@ -1,29 +1,29 @@
 namespace ServiceLib.ViewModels;
 
-public class RoutingRuleDetailsViewModel : MyReactiveObject
+public partial class RoutingRuleDetailsViewModel : MyReactiveObject
 {
     public IList<string> ProtocolItems { get; set; }
     public IList<string> InboundTagItems { get; set; }
 
     [Reactive]
-    public RulesItem SelectedSource { get; set; }
+    public partial RulesItem SelectedSource { get; set; }
 
     [Reactive]
-    public string Domain { get; set; }
+    public partial string Domain { get; set; }
 
     [Reactive]
-    public string IP { get; set; }
+    public partial string IP { get; set; }
 
     [Reactive]
-    public string Process { get; set; }
+    public partial string Process { get; set; }
 
     [Reactive]
-    public string? RuleType { get; set; }
+    public partial string? RuleType { get; set; }
 
     [Reactive]
-    public bool AutoSort { get; set; }
+    public partial bool AutoSort { get; set; }
 
-    public ReactiveCommand<Unit, Unit> SaveCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> SaveCmd { get; }
 
     public RoutingRuleDetailsViewModel(RulesItem rulesItem, Func<EViewAction, object?, Task<bool>>? updateView)
     {

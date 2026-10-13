@@ -4,7 +4,7 @@ public class GlobalHotkeySettingViewModel : MyReactiveObject
 {
     private readonly List<KeyEventItem> _globalHotkeys;
 
-    public ReactiveCommand<Unit, Unit> SaveCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> SaveCmd { get; }
 
     public GlobalHotkeySettingViewModel(Func<EViewAction, object?, Task<bool>>? updateView)
     {

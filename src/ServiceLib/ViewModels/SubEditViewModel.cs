@@ -1,11 +1,11 @@
 namespace ServiceLib.ViewModels;
 
-public class SubEditViewModel : MyReactiveObject
+public partial class SubEditViewModel : MyReactiveObject
 {
     [Reactive]
-    public SubItem SelectedSource { get; set; }
+    public partial SubItem SelectedSource { get; set; }
 
-    public ReactiveCommand<Unit, Unit> SaveCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> SaveCmd { get; }
 
     public SubEditViewModel(SubItem subItem, Func<EViewAction, object?, Task<bool>>? updateView)
     {
