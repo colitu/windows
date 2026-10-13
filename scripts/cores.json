@@ -1,5 +1,5 @@
 {
-  "_doc": "VPN cores shipped in the installer, pinned by version and SHA-256. scripts/fetch-cores.ps1 downloads the official GitHub release asset, checks the archive hash (and for Xray the release's .dgst file) and every extracted file, then puts the files in place. scripts/build-installer.ps1 refuses to build when a file in the core folders does not have the hash below.",
+  "_doc": "VPN cores shipped in the installer, pinned by version and SHA-256. scripts/fetch-cores.ps1 downloads the official GitHub release asset, checks the archive hash (and for Xray the release's .dgst file) and every extracted file, then puts the files in place. scripts/build-installer.ps1 refuses to build when a file in the core folders does not have the hash below. Every other file that ships next to the cores (wintun.dll, the Xray geo files, the sing-box rule sets) is pinned under \"files\"; -Verify also refuses any file in these folders that is listed nowhere (only licences and READMEs are allowed besides), and build-installer.ps1 copies only the pinned files by name.",
   "cores": [
     {
       "name": "xray",
@@ -23,5 +23,21 @@
         "libcronet.dll": "3217c6260fbca5f16072e0b79735742f40109a63bb0ff88fd6b96dd6b54a2928"
       }
     }
+  ],
+  "files": {
+    "xray-dosyalari": {
+      "wintun.dll": "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
+      "geoip.dat": "a405080a7cf35e3b024730a072937c0dc971e870da7d6616efba3caa693ca60a",
+      "geosite.dat": "802c59423fa548a2bad5273413938cc6d3f944323da9b1dba662055a9dfcd54a"
+    },
+    "srss-dosyalari": {
+      "geoip-ru.srs": "c036ff04fa075e901bc9a28ce4d0746faf45353b7ce16b7b42003e6fc14eb6e7",
+      "geosite-category-ru.srs": "8606946fe03d4e64569b8309b007faad2d16e072832761fe17c52bcb15aca3c7"
+    }
+  },
+  "documents": [
+    "LICENSE",
+    "LICENSE-wintun.txt",
+    "README.md"
   ]
 }

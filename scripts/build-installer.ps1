@@ -1,7 +1,7 @@
 param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
-    [string]$Version = "2.6.0",
+    [string]$Version = "2.9.6",
     [switch]$SkipPublish,
     # ECDSA P-256 private key (PKCS#8 PEM) that signs latest.json. Keep it off the repository;
     # the app only installs updates whose manifest verifies against the embedded public key.
@@ -140,9 +140,22 @@ $setupFallbackDir = Join-Path $publishDir "xray-dosyalari"
 New-Item -ItemType Directory -Force -Path $binXrayDir | Out-Null
 New-Item -ItemType Directory -Force -Path $setupFallbackDir | Out-Null
 
+# Only the files pinned in scripts/cores.json (checked above by fetch-cores.ps1 -Verify), by name,
+# and their licences: nothing else in these folders reaches the package or an elevated core.
+$xrayFiles = @("xray.exe", "wintun.dll", "geoip.dat", "geosite.dat", "LICENSE", "LICENSE-wintun.txt")
+$singboxFiles = @("sing-box.exe", "libcronet.dll", "LICENSE")
+$ruleSetFiles = @("geoip-ru.srs", "geosite-category-ru.srs")
+function Copy-Listed([string]$From, [string[]]$Names, [string]$To) {
+    foreach ($name in $Names) {
+        $source = Join-Path $From $name
+        Assert-FileExists $source "$name in $From"
+        Copy-Item -LiteralPath $source -Destination (Join-Path $To $name) -Force
+    }
+}
+
 Write-Host "Ensuring Xray data files..." -ForegroundColor Cyan
-Copy-Item -Path (Join-Path $xraySourceDir "*") -Destination $binXrayDir -Recurse -Force
-Copy-Item -Path (Join-Path $xraySourceDir "*") -Destination $setupFallbackDir -Recurse -Force
+Copy-Listed $xraySourceDir $xrayFiles $binXrayDir
+Copy-Listed $xraySourceDir $xrayFiles $setupFallbackDir
 
 Assert-FileExists (Join-Path $binXrayDir "xray.exe") "Published bin\xray\xray.exe"
 Assert-FileExists (Join-Path $binXrayDir "geoip.dat") "Published bin\xray\geoip.dat"
@@ -151,15 +164,15 @@ Assert-FileExists (Join-Path $binXrayDir "wintun.dll") "Published bin\xray\wintu
 
 $binSingboxDir = Join-Path $publishDir "bin\sing_box"
 New-Item -ItemType Directory -Force -Path $binSingboxDir | Out-Null
-Copy-Item -Path (Join-Path $singboxSourceDir "*") -Destination $binSingboxDir -Recurse -Force -Exclude "README.md"
-Copy-Item -Path (Join-Path $xraySourceDir "wintun.dll") -Destination $binSingboxDir -Force
+Copy-Listed $singboxSourceDir $singboxFiles $binSingboxDir
+Copy-Listed $xraySourceDir @("wintun.dll") $binSingboxDir
 Assert-FileExists (Join-Path $binSingboxDir "sing-box.exe") "Published bin\sing_box\sing-box.exe"
 
 # sing-box rule sets for the "Russian sites direct" rules; without them sing-box would try to
 # download them from GitHub, which is blocked in Russia.
 $binSrsDir = Join-Path $publishDir "bin\srss"
 New-Item -ItemType Directory -Force -Path $binSrsDir | Out-Null
-Copy-Item -Path (Join-Path $repoRoot "srss-dosyalari\*.srs") -Destination $binSrsDir -Force
+Copy-Listed (Join-Path $repoRoot "srss-dosyalari") $ruleSetFiles $binSrsDir
 Assert-FileExists (Join-Path $binSrsDir "geosite-category-ru.srs") "Published bin\srss\geosite-category-ru.srs"
 Assert-FileExists (Join-Path $binSrsDir "geoip-ru.srs") "Published bin\srss\geoip-ru.srs"
 

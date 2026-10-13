@@ -37,6 +37,39 @@ function Test-PinnedCores {
             }
         }
     }
+    # The files that ship next to the cores (wintun.dll, geo files, rule sets): pinned too.
+    foreach ($folder in $manifest.files.PSObject.Properties) {
+        foreach ($file in $folder.Value.PSObject.Properties) {
+            $path = Join-Path (Join-Path $repoRoot $folder.Name) $file.Name
+            if (-not (Test-Path -LiteralPath $path)) {
+                $bad += "$($folder.Name)\$($file.Name): missing"
+            }
+            elseif ((Get-Sha256 $path) -ne $file.Value) {
+                $bad += "$($folder.Name)\$($file.Name): SHA-256 is not the pinned one"
+            }
+        }
+    }
+    # Nothing else in these folders: a stray DLL there could be loaded by an elevated core.
+    $known = @{}
+    foreach ($core in $manifest.cores) {
+        foreach ($file in $core.files.PSObject.Properties) { $known["$($core.folder)\$($file.Name)".ToLowerInvariant()] = $true }
+    }
+    foreach ($folder in $manifest.files.PSObject.Properties) {
+        foreach ($file in $folder.Value.PSObject.Properties) { $known["$($folder.Name)\$($file.Name)".ToLowerInvariant()] = $true }
+    }
+    $folders = @($manifest.cores | ForEach-Object { $_.folder }) + @($manifest.files.PSObject.Properties | ForEach-Object { $_.Name }) | Sort-Object -Unique
+    foreach ($folder in $folders) {
+        $dir = Join-Path $repoRoot $folder
+        if (-not (Test-Path -LiteralPath $dir)) { continue }
+        foreach ($item in Get-ChildItem -LiteralPath $dir -Force) {
+            if ($item.PSIsContainer) {
+                $bad += "$folder\$($item.Name): unexpected folder"
+            }
+            elseif (-not $known.ContainsKey("$folder\$($item.Name)".ToLowerInvariant()) -and $manifest.documents -notcontains $item.Name) {
+                $bad += "$folder\$($item.Name): not listed in scripts/cores.json"
+            }
+        }
+    }
     return $bad
 }
 

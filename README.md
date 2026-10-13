@@ -98,15 +98,17 @@ dotnet test ColituVPN.sln -c Release
 
 ### Installer
 
-The core executables are not stored in git. Their versions and SHA-256 hashes
-are pinned in [`scripts/cores.json`](scripts/cores.json) (Xray-core 26.10.10,
-sing-box 1.14.3). Download and check them from the official GitHub releases:
+`xray.exe` and `sing-box.exe` are not stored in git; `libcronet.dll`, `wintun.dll`, the Xray
+geo files and the sing-box rule sets are. Every one of them is pinned by SHA-256 in
+[`scripts/cores.json`](scripts/cores.json) (Xray-core 26.10.10, sing-box 1.14.3). Download and
+check the cores from the official GitHub releases:
 
 ```powershell
 pwsh scripts/fetch-cores.ps1
 ```
 
-`build-installer.ps1` refuses to build when a core file does not have its pinned hash.
+`build-installer.ps1` refuses to build when a pinned file does not have its hash or a core
+folder holds a file that is not listed, and it copies only the pinned files by name.
 
 Then run:
 
