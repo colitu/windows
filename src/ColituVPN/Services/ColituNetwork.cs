@@ -138,7 +138,7 @@ public static class ColituNetwork
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            Logging.SaveLog($"ColituNetwork.ResolveViaSystem {host}: {ex.Message}");
+            Logging.SaveLog($"ColituNetwork.ResolveViaSystem {ColituLogPrivacy.ForLog(host)}: {ex.GetType().Name}");
             return null;
         }
     }
