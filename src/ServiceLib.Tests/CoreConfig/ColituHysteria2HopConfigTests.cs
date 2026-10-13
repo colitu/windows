@@ -11,8 +11,9 @@ namespace ServiceLib.Tests.CoreConfig;
 /// <summary>
 /// The panel adds mport=20000-40000 to hysteria2:// links of nodes that support port hopping
 /// (Russian mobile networks throttle a long-lived UDP flow on one port). Both cores must hop:
-/// sing-box with server_ports + hop_interval, Xray 26 with finalmask.quicParams.udpHop (the older
-/// hysteriaSettings.udphop shape is silently ignored by Xray 26). Without mport nothing changes.
+/// sing-box with server_ports + hop_interval, Xray 26.9.8+ with the "udphop" UDP mask in
+/// finalmask.udp (the older finalmask.quicParams.udpHop and hysteriaSettings.udphop shapes are
+/// silently ignored). Without mport nothing changes.
 /// </summary>
 public class ColituHysteria2HopConfigTests
 {
@@ -77,16 +78,29 @@ public class ColituHysteria2HopConfigTests
     }
 
     [Fact]
-    public void Xray_WithMport_HopsThroughFinalmaskQuicParams()
+    public void Xray_WithMport_HopsThroughTheUdphopMask()
     {
         var stream = HysteriaStream(HopLink);
 
-        var udpHop = stream["finalmask"]?["quicParams"]?["udpHop"];
-        udpHop.Should().NotBeNull();
-        udpHop!["ports"]!.GetValue<string>().Should().Be("20000-40000");
-        udpHop["interval"]!.GetValue<string>().Should().Be("30");
-        // The pre-26 shape is ignored by Xray 26 and must not be relied on.
+        var udp = stream["finalmask"]!["udp"]!.AsArray();
+        udp.Should().HaveCount(1);
+        udp[0]!["type"]!.GetValue<string>().Should().Be("udphop");
+        var settings = udp[0]!["settings"]!;
+        settings["mode"]!.GetValue<string>().Should().Be("intervalLocal,intervalRemote");
+        settings["interval"]!.GetValue<int>().Should().Be(30);
+        settings["remotePorts"]!.GetValue<string>().Should().Be("20000-40000");
+        // The shapes Xray 26 ignores are not written.
+        stream["finalmask"]!["quicParams"]?["udpHop"].Should().BeNull();
         stream["hysteriaSettings"]?["udphop"].Should().BeNull();
+    }
+
+    [Fact]
+    public void Xray_WithMportAndSalamander_UdphopFirstThenSalamander()
+    {
+        var stream = HysteriaStream("hysteria2://secret@203.0.113.7:8443?sni=vpn.example.com&insecure=0&obfs=salamander&obfs-password=pw&mport=20000-40000#Colitu");
+
+        // Xray only accepts a mask that dials (udphop) at index 0 of the list.
+        stream["finalmask"]!["udp"]!.AsArray().Select(mask => mask!["type"]!.GetValue<string>()).Should().Equal("udphop", "salamander");
     }
 
     [Fact]
@@ -94,6 +108,18 @@ public class ColituHysteria2HopConfigTests
     {
         var stream = HysteriaStream(PlainLink);
 
+        stream["finalmask"]?["udp"].Should().BeNull();
         stream["finalmask"]?["quicParams"]?["udpHop"].Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("30", 30)]
+    [InlineData("3", 5)]
+    [InlineData("20-40", 20)]
+    [InlineData("", 30)]
+    [InlineData("x", 30)]
+    public void HopSeconds_IsANumberOfAtLeastFive(string interval, int expected)
+    {
+        CoreConfigV2rayService.HopSeconds(interval).Should().Be(expected);
     }
 }

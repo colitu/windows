@@ -587,16 +587,6 @@ public partial class CoreConfigV2rayService
                             : Global.Hysteria2DefaultHopInt).ToString();
                     var hy2Finalmask = new Finalmask4Ray();
                     var quicParams = new QuicParams4Ray();
-                    if (!ports.IsNullOrEmpty() &&
-                        (ports.Contains(':') || ports.Contains('-') || ports.Contains(',')))
-                    {
-                        var udpHop = new UdpHop4Ray
-                        {
-                            ports = ports.Replace(':', '-'),
-                            interval = hopInterval,
-                        };
-                        quicParams.udpHop = udpHop;
-                    }
                     if (upMbps > 0 || downMbps > 0)
                     {
                         quicParams.congestion = "brutal";
@@ -608,16 +598,33 @@ public partial class CoreConfigV2rayService
                         quicParams.congestion = "bbr";
                     }
                     hy2Finalmask.quicParams = quicParams;
+                    // Port hopping (Xray 26.9.8+): the "udphop" UDP mask. The older finalmask.quicParams.udpHop is
+                    // ignored without an error, so hopping silently stopped. A mask that dials must come first.
+                    var udpMasks = new List<Mask4Ray>();
+                    if (HopRange(ports) is { } hopRange)
+                    {
+                        udpMasks.Add(new Mask4Ray
+                        {
+                            type = "udphop",
+                            settings = new MaskSettings4Ray
+                            {
+                                mode = "intervalLocal,intervalRemote",
+                                interval = HopSeconds(hopInterval),
+                                remotePorts = hopRange,
+                            }
+                        });
+                    }
                     if (!protocolExtra.SalamanderPass.IsNullOrEmpty())
                     {
-                        hy2Finalmask.udp =
-                            [
-                                new Mask4Ray
-                                {
-                                    type = "salamander",
-                                    settings = new MaskSettings4Ray { password = protocolExtra.SalamanderPass.TrimEx(), }
-                                }
-                            ];
+                        udpMasks.Add(new Mask4Ray
+                        {
+                            type = "salamander",
+                            settings = new MaskSettings4Ray { password = protocolExtra.SalamanderPass.TrimEx(), }
+                        });
+                    }
+                    if (udpMasks.Count > 0)
+                    {
+                        hy2Finalmask.udp = udpMasks;
                     }
                     streamSettings.hysteriaSettings = new()
                     {
@@ -881,5 +888,30 @@ public partial class CoreConfigV2rayService
             // write back
             outbound.streamSettings.finalmask = finalMaskJsonObj;
         }
+    }
+
+    /// <summary>The port range of an mport value ("20000-40000", "20000:40000" or a list "a-b,c"), for udphop; null when it is a single port.</summary>
+    public static string? HopRange(string? ports)
+    {
+        if (ports.IsNullOrEmpty() || !(ports.Contains(':') || ports.Contains('-') || ports.Contains(',')))
+        {
+            return null;
+        }
+        return ports.Replace(':', '-').Replace(" ", "");
+    }
+
+    /// <summary>Seconds between hops as Xray wants them (a number, at least 5); "20-40" takes its lower bound.</summary>
+    public static int HopSeconds(string? interval)
+    {
+        var text = (interval ?? "").Trim();
+        var dash = text.IndexOf('-');
+        if (dash > 0)
+        {
+            text = text[..dash];
+        }
+        var seconds = int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var value) && value > 0
+            ? value
+            : Global.Hysteria2DefaultHopInt;
+        return Math.Max(5, seconds);
     }
 }
