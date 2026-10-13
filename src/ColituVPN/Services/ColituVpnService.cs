@@ -12,7 +12,7 @@ using ServiceLib.Helper;
 
 namespace v2rayN.Services;
 
-public sealed class ColituVpnService
+public sealed class ColituVpnService : IColituKillSwitchControl
 {
     public static ColituVpnService Instance { get; } = new();
 
@@ -143,6 +143,7 @@ public sealed class ColituVpnService
 
     private ColituVpnService()
     {
+        _hold = new ColituKillSwitchHold(this);
         ColituInsights.Instance.Touch();
         LoadState();
         // The warm spare goes into the generated core config before the core starts.
@@ -206,11 +207,6 @@ public sealed class ColituVpnService
     internal static bool AdvancedSettingsOn(ColituVpnPreferences preferences, bool tun, bool rotation, bool multihopSelected, bool killSwitchHolding) =>
         ColituSplitTunnel.IsActive(preferences, tun) || rotation || multihopSelected || killSwitchHolding;
 
-    /// <summary>
-    /// Switches between Simple and Advanced mode: only what the screens show changes (no reconnect).
-    /// Going Simple with a multihop route picked, the next connect uses the automatic choice; a live
-    /// connection is not touched.
-    /// </summary>
     /// <summary>Order of the Locations list (<see cref="ColituLocationSort"/>); kept with the other preferences.</summary>
     public string LocationSort => ColituLocationSort.Normalize(Preferences.LocationSort);
 
@@ -225,6 +221,11 @@ public sealed class ColituVpnService
         SaveState();
     }
 
+    /// <summary>
+    /// Switches between Simple and Advanced mode: only what the screens show changes (no reconnect).
+    /// Going Simple with a multihop route picked, the next connect uses the automatic choice; a live
+    /// connection is not touched.
+    /// </summary>
     public void SetAdvancedMode(bool advanced)
     {
         _session = _session with { Preferences = _session.Preferences with { AdvancedMode = advanced } };
@@ -600,6 +601,7 @@ public sealed class ColituVpnService
         _failedThisConnect.Clear();
         _apiUnreachable = false;
         OfferFastestServer = false;
+        _hold.ConnectStarted();
         SetStatus(ColituVpnStatus.Connecting);
         LastError = null;
         _lastCoreMessage = null;
@@ -858,8 +860,7 @@ public sealed class ColituVpnService
                 _adaptive.RememberGoodTransport(_networkKey, connected.Id, _activeTransport, now);
             }
             ResetHealthChecks();
-            _killSwitchHeldFromPreviousRun = false;
-            _killSwitchHeldAfterFailure = false;
+            _hold.Connected();
             await ApplyKillSwitchForConnectedTunnelAsync();
             SetStatus(ColituVpnStatus.Connected);
             EmitConnectEvent(true, connectWatch.ElapsedMilliseconds, automatic, server, null);
@@ -868,7 +869,7 @@ public sealed class ColituVpnService
         {
             ConnectStage = null;
             LogConnection("Connection attempt cancelled");
-            if (killSwitchEngagedHere) await ReleaseKillSwitchAsync("connection attempt cancelled");
+            await _hold.ConnectCancelledAsync(killSwitchEngagedHere);
             await StopCoreAsync();
             await SysProxyHandler.UpdateSysProxy(_config, true);
             await RestoreProxyPreferenceAsync();
@@ -894,14 +895,10 @@ public sealed class ColituVpnService
             // switch off, or quitting) opens the internet again.
             var devicePaused = IsDevicePaused(ex);
             var noPlan = ex is ColituApiException planApi && IsPlanError(planApi);
-            if (KillSwitchEngaged && ReleaseKillSwitchAfterFailure(Preferences.KillSwitchEnabled, devicePaused, noPlan))
+            // A paused device or no plan never keeps the internet closed: there is nothing to reconnect to.
+            if (await _hold.ConnectFailedAsync(Preferences.KillSwitchEnabled, devicePaused, noPlan))
             {
-                // A paused device or no plan never keeps the internet closed: there is nothing to reconnect to.
-                await ReleaseKillSwitchAsync(devicePaused ? "device paused" : noPlan ? "no active plan" : "connection failed, kill switch is off");
-            }
-            else if (KillSwitchEngaged)
-            {
-                _killSwitchHeldAfterFailure = true;
+                _hold.FailedOn(ColituNetwork.PhysicalNetworkFingerprint());
                 LogConnection("Connection failed: the kill switch stays armed (fail-closed) until a retry connects or the user disconnects");
             }
             await StopCoreAsync();
@@ -1641,41 +1638,55 @@ public sealed class ColituVpnService
 
     public async Task<bool> TryAutoConnectAsync()
     {
-        var connected = await TryAutoConnectCoreAsync();
-        if (!connected)
+        var outcome = await TryAutoConnectCoreAsync();
+        var connecting = Status is ColituVpnStatus.Connected or ColituVpnStatus.Connecting or ColituVpnStatus.Reconnecting;
+        var held = KillSwitchHeldAfterCrash;
+        // Fail-closed: the kill switch held since the crashed run stays when the automatic connect
+        // fails (as a failed connect by hand); it opens only when there is nothing to connect to.
+        if (await _hold.AutoConnectEndedAsync(outcome, Preferences.KillSwitchEnabled, connecting))
         {
-            // The kill switch kept the internet closed for this connection since the last run.
-            await ReleaseHeldKillSwitchAsync("auto-connect did not connect");
+            _hold.FailedOn(ColituNetwork.PhysicalNetworkFingerprint());
+            LogConnection("Auto-connect failed: the kill switch stays armed (fail-closed) until a retry connects or the user disconnects");
+            StatusChanged?.Invoke(Status);
         }
-        return connected;
+        else if (held && !KillSwitchEngaged)
+        {
+            Notice?.Invoke("info.killSwitchRecovered");
+            StatusChanged?.Invoke(Status);
+        }
+        return outcome == ColituAutoConnectOutcome.Connected;
     }
 
-    private async Task<bool> TryAutoConnectCoreAsync()
+    private async Task<ColituAutoConnectOutcome> TryAutoConnectCoreAsync()
     {
         if (DevicePaused != null)
         {
             LogConnection("Auto-connect skipped: this device is paused");
-            return false;
+            return ColituAutoConnectOutcome.NothingToConnect;
         }
         if (!Preferences.AutoConnectEnabled || GetStatus() is ColituVpnStatus.Connected or ColituVpnStatus.Connecting or ColituVpnStatus.Reconnecting)
         {
-            return false;
+            return ColituAutoConnectOutcome.NotAttempted;
         }
 
         // At sign-in a USB Wi-Fi adapter can take well over a minute to get its network.
         var waited = Stopwatch.StartNew();
         while (!NetworkInterface.GetIsNetworkAvailable() || !ColituNetwork.HasDefaultRoute())
         {
-            if (waited.Elapsed > TimeSpan.FromMinutes(3) || _userDisconnected)
+            if (_userDisconnected)
             {
-                LogConnection("Auto-connect skipped: no network");
-                return false;
+                return ColituAutoConnectOutcome.NotAttempted;
+            }
+            if (waited.Elapsed > TimeSpan.FromMinutes(3))
+            {
+                LogConnection("Auto-connect failed: no network");
+                return ColituAutoConnectOutcome.Failed;
             }
             await Task.Delay(1000);
             if (GetStatus() is ColituVpnStatus.Connected or ColituVpnStatus.Connecting or ColituVpnStatus.Reconnecting)
             {
                 // The user connected meanwhile.
-                return false;
+                return ColituAutoConnectOutcome.NotAttempted;
             }
         }
         if (waited.Elapsed > TimeSpan.FromSeconds(2))
@@ -1688,35 +1699,39 @@ public sealed class ColituVpnService
             try
             {
                 await ConnectSavedAsync();
-                return Status == ColituVpnStatus.Connected;
+                return Status == ColituVpnStatus.Connected ? ColituAutoConnectOutcome.Connected : ColituAutoConnectOutcome.Failed;
             }
             catch (ColituPlanRequiredException)
             {
                 // Auto-connect now starts before the plan is loaded; a second try can't help.
                 LogConnection("Auto-connect skipped: no active plan");
-                return false;
+                return ColituAutoConnectOutcome.NothingToConnect;
             }
             catch (ColituDevicePausedException)
             {
                 // Never connect a paused device by itself; the home screen asks the user.
                 LogConnection("Auto-connect skipped: this device is paused");
-                return false;
+                return ColituAutoConnectOutcome.NothingToConnect;
             }
             catch (Exception ex)
             {
                 LogConnection($"Auto-connect attempt {round} failed: {ex.Message}");
-                if (_userDisconnected || round == 2)
+                if (_userDisconnected)
                 {
-                    return false;
+                    return ColituAutoConnectOutcome.NotAttempted;
+                }
+                if (round == 2)
+                {
+                    return ColituAutoConnectOutcome.Failed;
                 }
                 await Task.Delay(TimeSpan.FromSeconds(8));
                 if (_userDisconnected || Status is ColituVpnStatus.Connected or ColituVpnStatus.Connecting)
                 {
-                    return false;
+                    return ColituAutoConnectOutcome.NotAttempted;
                 }
             }
         }
-        return false;
+        return ColituAutoConnectOutcome.Failed;
     }
 
     public ColituVpnStatus GetStatus() => Status;
@@ -1864,7 +1879,7 @@ public sealed class ColituVpnService
     {
         // Also after a failed reconnect (Error): the kill switch may still hold the internet
         // closed and the background retry loop must stop.
-        if (Status != ColituVpnStatus.Disconnected || KillSwitchEngaged)
+        if (Status != ColituVpnStatus.Disconnected || ColituKillSwitchHold.DisconnectOnExit(Status, KillSwitchEngaged))
         {
             await DisconnectAsync();
         }
@@ -2781,6 +2796,23 @@ public sealed class ColituVpnService
 
     private async Task OnNetworkSettledAsync()
     {
+        if (KillSwitchHeldAfterFailure && !_userDisconnected && _connectionLock.CurrentCount > 0
+            && _hold.TakeNetworkRetry(ColituNetwork.PhysicalNetworkFingerprint()))
+        {
+            // Fail-closed after a failed connect: a new network (another Wi-Fi, the adapter came
+            // back) gets one automatic retry; the internet stays closed until it connects.
+            LogConnection("Network changed while the kill switch holds after a failed connect; retrying once");
+            try
+            {
+                await ConnectSavedAsync();
+            }
+            catch (Exception ex)
+            {
+                LogConnection($"Retry after the network change failed: {ex.Message}");
+            }
+            StatusChanged?.Invoke(Status);
+            return;
+        }
         if (!CanHeal())
         {
             return;
@@ -3140,8 +3172,12 @@ public sealed class ColituVpnService
     private List<(string Address, int Port, string Protocol)>? _killSwitchServers;
     /// <summary>A transport of the current attempt hops over a UDP port range (Hysteria2 mport).</summary>
     private bool _killSwitchPortHopping;
-    /// <summary>Armed by a previous run that ended without disarming (crash, power loss); kept for the auto-connect.</summary>
-    private volatile bool _killSwitchHeldFromPreviousRun;
+    /// <summary>Fail-closed rules: what a failed or cancelled connect does with the kill switch (ColituKillSwitchHold).</summary>
+    private readonly ColituKillSwitchHold _hold;
+
+    bool IColituKillSwitchControl.Engaged => KillSwitchEngaged;
+
+    Task IColituKillSwitchControl.ReleaseAsync(string reason) => ReleaseKillSwitchAsync(reason);
 
     /// <summary>The cores' bootstrap resolvers (EnsureCoreReadyAsync): reachable outside the tunnel to find the DoH servers.</summary>
     private static readonly string[] BootstrapResolvers = ["1.1.1.1", "8.8.8.8"];
@@ -3160,20 +3196,15 @@ public sealed class ColituVpnService
     public bool KillSwitchEngaged => _serviceArmed || _dynamicKillSwitch.IsEngaged;
 
     /// <summary>The internet stays blocked because Colitu closed while connected (crash, power loss).</summary>
-    public bool KillSwitchHeldAfterCrash => _killSwitchHeldFromPreviousRun && KillSwitchEngaged;
+    public bool KillSwitchHeldAfterCrash => _hold.HeldFromPreviousRun;
 
-    /// <summary>A connect failed with the kill switch on: the internet stays closed until a retry connects or the user disconnects.</summary>
-    private volatile bool _killSwitchHeldAfterFailure;
+    /// <summary>The internet stays blocked because a connect failed (fail-closed), by hand or automatically after a crash.</summary>
+    public bool KillSwitchHeldAfterFailure => _hold.HeldAfterFailure
+        && Status is not (ColituVpnStatus.Connected or ColituVpnStatus.Connecting or ColituVpnStatus.Reconnecting);
 
-    /// <summary>The internet stays blocked because a connect failed (fail-closed); no automatic retry runs.</summary>
-    public bool KillSwitchHeldAfterFailure => _killSwitchHeldAfterFailure && KillSwitchEngaged && Status == ColituVpnStatus.Error;
-
-    /// <summary>
-    /// Fail-closed: whether a failed connect releases an armed kill switch. Only when there is
-    /// nothing to reconnect to (device paused, no plan) or the kill switch was turned off.
-    /// </summary>
+    /// <summary>Fail-closed: whether a failed connect releases an armed kill switch (<see cref="ColituKillSwitchHold.ReleaseAfterFailure"/>).</summary>
     internal static bool ReleaseKillSwitchAfterFailure(bool killSwitchEnabled, bool devicePaused, bool planError)
-        => !killSwitchEnabled || devicePaused || planError;
+        => ColituKillSwitchHold.ReleaseAfterFailure(killSwitchEnabled, devicePaused, planError);
 
     /// <summary>
     /// With the kill switch on, it stays armed for the whole session in both modes: from before the
@@ -3294,8 +3325,7 @@ public sealed class ColituVpnService
         await _killSwitchLock.WaitAsync();
         try
         {
-            _killSwitchHeldFromPreviousRun = false;
-            _killSwitchHeldAfterFailure = false;
+            _hold.Released();
             if (_serviceArmed)
             {
                 try
@@ -3334,11 +3364,10 @@ public sealed class ColituVpnService
     /// <summary>The kill switch held the internet closed since the last run; the planned auto-connect will not happen.</summary>
     public async Task ReleaseHeldKillSwitchAsync(string reason)
     {
-        if (!_killSwitchHeldFromPreviousRun || Status is ColituVpnStatus.Connected or ColituVpnStatus.Connecting or ColituVpnStatus.Reconnecting)
+        if (!await _hold.ReleaseHeldAsync(reason, Status is ColituVpnStatus.Connected or ColituVpnStatus.Connecting or ColituVpnStatus.Reconnecting))
         {
             return;
         }
-        await ReleaseKillSwitchAsync(reason);
         Notice?.Invoke("info.killSwitchRecovered");
         StatusChanged?.Invoke(Status);
     }
@@ -3434,7 +3463,7 @@ public sealed class ColituVpnService
         // automatic connect armed it again.
         if (preferences.KillSwitchEnabled && preferences.AutoConnectEnabled && ColituAuthService.Instance.HasSavedSession)
         {
-            _killSwitchHeldFromPreviousRun = true;
+            _hold.HoldFromPreviousRun();
             Notice?.Invoke("info.killSwitchHeld");
             return;
         }

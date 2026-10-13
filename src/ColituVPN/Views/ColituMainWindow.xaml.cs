@@ -699,8 +699,7 @@ public partial class ColituMainWindow
         {
             // Also with the kill switch holding the internet closed (a failed connect, fail-closed):
             // quitting opens it again. Only a crash keeps it closed.
-            if (_vpn.Status is ColituVpnStatus.Connected or ColituVpnStatus.Connecting or ColituVpnStatus.Reconnecting
-                || _vpn.KillSwitchEngaged)
+            if (ColituKillSwitchHold.DisconnectOnExit(_vpn.Status, _vpn.KillSwitchEngaged))
             {
                 await _vpn.DisconnectAsync();
             }
