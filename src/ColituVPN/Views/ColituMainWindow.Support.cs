@@ -35,7 +35,7 @@ public partial class ColituMainWindow
     {
         _supportUnreadTimer ??= NewTimer(TimeSpan.FromSeconds(45), async () => await CheckSupportUnreadAsync());
         _supportUnreadTimer.Start();
-        SupportLauncher.Visibility = Visibility.Visible;
+        ShowSupportTab(true);
         _ = CheckSupportUnreadAsync();
     }
 
@@ -50,8 +50,8 @@ public partial class ColituMainWindow
         _supportNewFiles.Clear();
         _supportReplyFiles.Clear();
         _supportImages.Clear();
-        SupportBadge.Visibility = Visibility.Collapsed;
-        SupportLauncher.Visibility = Visibility.Collapsed;
+        NavSupportDot.Visibility = Visibility.Collapsed;
+        ShowSupportTab(false);
         SupportList.ItemsSource = null;
         SupportMessages.Children.Clear();
         ResetSupportChat();
@@ -98,7 +98,7 @@ public partial class ColituMainWindow
                 return;
             }
             // Support may have been switched off and on again in the panel.
-            SupportLauncher.Visibility = Visibility.Visible;
+            ShowSupportTab(true);
             if (_supportUnread >= 0 && unread > _supportUnread)
             {
                 NotifySupportReply();
@@ -112,8 +112,8 @@ public partial class ColituMainWindow
         }
         catch (ColituApiException ex) when (ex.ErrorCode is "SUPPORT_UNAVAILABLE")
         {
-            // Support switched off in the panel: hide the launcher until it returns.
-            SupportLauncher.Visibility = Visibility.Collapsed;
+            // Support switched off in the panel: hide the tab until it returns.
+            ShowSupportTab(false);
         }
         catch (Exception ex) when (ColituVpnService.IsNetworkFailure(ex))
         {
@@ -136,25 +136,38 @@ public partial class ColituMainWindow
         else if (_page != "support")
         {
             ShowToast(Loc.I["support.newReply"]);
-            PulseSupportLauncher();
+            PulseSupportDot();
         }
     }
 
+    /// <summary>The "Live support" tab's dot: an unread reply from the team.</summary>
     private void ApplySupportBadge()
     {
-        var count = Math.Max(0, _supportUnread);
-        SupportBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        SupportBadgeText.Text = count > 9 ? "9+" : count.ToString(CultureInfo.InvariantCulture);
+        NavSupportDot.Visibility = _supportUnread > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void PulseSupportLauncher()
+    private void PulseSupportDot()
     {
-        var pulse = new DoubleAnimation(1, 1.14, TimeSpan.FromMilliseconds(220)) { AutoReverse = true, RepeatBehavior = new RepeatBehavior(2), EasingFunction = Ease };
-        SupportLauncherScale.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
-        SupportLauncherScale.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
+        var pulse = new DoubleAnimation(1, 1.6, TimeSpan.FromMilliseconds(220)) { AutoReverse = true, RepeatBehavior = new RepeatBehavior(2), EasingFunction = Ease };
+        NavSupportDotScale.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
+        NavSupportDotScale.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
     }
 
-    private void SupportLauncher_Click(object sender, RoutedEventArgs e) => Navigate("support");
+    /// <summary>The "Live support" tab shows while signed in and support is on in the panel.</summary>
+    private void ShowSupportTab(bool show)
+    {
+        var visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (NavSupport.Visibility == visibility)
+        {
+            return;
+        }
+        NavSupport.Visibility = visibility;
+        if (!show && _page == "support")
+        {
+            Navigate("home", animate: false);
+        }
+        Dispatcher.BeginInvoke(FitNav, DispatcherPriority.Loaded);
+    }
 
     private void SupportHelp_Click(object sender, RoutedEventArgs e)
     {
@@ -164,19 +177,12 @@ public partial class ColituMainWindow
     // ── Page and list ──────────────────────────────────────────────────────
     private async Task OpenSupportAsync()
     {
+        // The tab opens on the assistant chat; the requests stay one click away in the list.
+        if (SupportNewForm.Visibility != Visibility.Visible)
+        {
+            ShowSupportChat();
+        }
         await LoadSupportListAsync(showSpinner: _supportConversations.Count == 0);
-        if (_supportCurrent != null && _supportConversations.Any(item => item.Id == _supportCurrent.Id))
-        {
-            await OpenSupportThreadAsync(_supportCurrent.Id);
-        }
-        else if (_supportConversations.Count > 0)
-        {
-            await OpenSupportThreadAsync(_supportConversations[0].Id);
-        }
-        else if (SupportNewForm.Visibility != Visibility.Visible)
-        {
-            ShowNewSupportForm();
-        }
     }
 
     private async Task LoadSupportListAsync(bool showSpinner)

@@ -468,16 +468,16 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid Margin="24,0,160,0">
+            <Grid x:Name="HeaderBar" Margin="24,0,120,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition x:Name="HeaderLeftColumn" Width="220" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition x:Name="HeaderRightColumn" Width="220" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                <StackPanel x:Name="BrandMark" VerticalAlignment="Center" Orientation="Horizontal">
                     <Image Height="28" Source="/Resources/mark.png" />
-                    <Path Height="14" Margin="14,0,0,0" VerticalAlignment="Center" Data="{StaticResource ColituWordmarkGeometry}" Fill="White" Stretch="Uniform" />
+                    <Path x:Name="BrandWordmark" Height="14" Margin="14,0,0,0" VerticalAlignment="Center" Data="{StaticResource ColituWordmarkGeometry}" Fill="White" Stretch="Uniform" />
                 </StackPanel>
 
                 <!-- Floating pill with the tabs; the active one is lavender (ColituNavBar). -->
@@ -494,11 +494,22 @@
                             <RadioButton x:Name="NavPlan" Checked="Nav_Checked" Content="{s:T nav.plan}" GroupName="Nav" Style="{StaticResource NavTab}" Tag="plan" />
                             <RadioButton x:Name="NavAccount" Checked="Nav_Checked" Content="{s:T nav.account}" GroupName="Nav" Style="{StaticResource NavTab}" Tag="account" />
                             <RadioButton x:Name="NavSettings" Checked="Nav_Checked" Content="{s:T nav.settings}" GroupName="Nav" Style="{StaticResource NavTab}" Tag="settings" />
+                            <!-- Live support: the assistant chat and the support requests; a dot for an unread reply. -->
+                            <RadioButton x:Name="NavSupport" AutomationProperties.Name="{s:T nav.liveSupport}" Checked="Nav_Checked" GroupName="Nav" Style="{StaticResource NavTab}" Tag="support" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{s:T nav.liveSupport}" />
+                                    <Ellipse x:Name="NavSupportDot" Width="7" Height="7" Margin="6,1,0,0" VerticalAlignment="Center" Fill="{StaticResource DangerBrush}" Visibility="Collapsed">
+                                        <Ellipse.RenderTransform>
+                                            <ScaleTransform x:Name="NavSupportDotScale" CenterX="3.5" CenterY="3.5" />
+                                        </Ellipse.RenderTransform>
+                                    </Ellipse>
+                                </StackPanel>
+                            </RadioButton>
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                <StackPanel x:Name="HeaderRight" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
                     <Button x:Name="UpdateButton" Height="32" Margin="0,0,10,0" Padding="12,0" Click="UpdateButton_Click" Style="{StaticResource SecondaryButton}" Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal">
                             <Path Width="13" Height="13" Margin="0,0,7,0" Data="{StaticResource IconDownload}" Style="{StaticResource Stroke}" />
@@ -1742,18 +1753,6 @@
 
         <!-- Window controls (always on top) -->
         <StackPanel Margin="0,15,16,0" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal">
-            <!-- Live support, with the unread badge; only while signed in. -->
-            <Button x:Name="SupportLauncher" Margin="0,0,6,0" Click="SupportLauncher_Click" RenderTransformOrigin="0.5,0.5" Style="{StaticResource WindowButton}" ToolTip="{s:T support.title}" Visibility="Collapsed">
-                <Button.RenderTransform>
-                    <ScaleTransform x:Name="SupportLauncherScale" />
-                </Button.RenderTransform>
-                <Grid Width="34" Height="34">
-                    <Path Width="15" Height="15" Data="{StaticResource IconChat}" Style="{StaticResource Stroke}" />
-                    <Border x:Name="SupportBadge" MinWidth="16" Height="16" Margin="0,1,0,0" Padding="4,0" HorizontalAlignment="Right" VerticalAlignment="Top" Background="{StaticResource DangerBrush}" BorderBrush="#0E0E14" BorderThickness="1.5" CornerRadius="8" Visibility="Collapsed">
-                        <TextBlock x:Name="SupportBadgeText" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9.5" FontWeight="Bold" Foreground="White" />
-                    </Border>
-                </Grid>
-            </Button>
             <Button Click="Minimize_Click" Style="{StaticResource WindowButton}" ToolTip="{s:T window.minimize}">
                 <Path Width="12" Height="12" Data="{StaticResource IconMinus}" Style="{StaticResource Stroke}" />
             </Button>

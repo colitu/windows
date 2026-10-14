@@ -137,3 +137,26 @@ public class ColituLiveSupportMarkdownTests
         AwesomeAssertions.AssertionExtensions.Should(v2rayN.Views.ColituMainWindow.PlainAnswer(answer)).Be(shown);
     }
 }
+
+public class ColituLiveSupportTabTests
+{
+    [Fact]
+    public void LiveSupport_IsATopTab_WithItsAutomationName_AndNoSecondEntry()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "ColituVPN", "Views")))
+        {
+            dir = dir.Parent;
+        }
+        var xaml = File.ReadAllText(Path.Combine(dir!.FullName, "ColituVPN", "Views", "ColituMainWindow.xaml"));
+        AwesomeAssertions.AssertionExtensions.Should(xaml).Contain("x:Name=\"NavSupport\" AutomationProperties.Name=\"{s:T nav.liveSupport}\"")
+            .And.Contain("Tag=\"support\"").And.Contain("x:Name=\"NavSupportDot\"")
+            .And.NotContain("SupportLauncher");
+    }
+
+    [Fact]
+    public void LiveSupport_TabLabel_InEveryLanguage()
+    {
+        AwesomeAssertions.AssertionExtensions.Should(v2rayN.Services.Loc.ValuesOf("nav.liveSupport")).Equal("Поддержка", "Canlı destek", "Live support");
+    }
+}

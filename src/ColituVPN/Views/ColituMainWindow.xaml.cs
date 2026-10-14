@@ -73,6 +73,7 @@ public partial class ColituMainWindow
         };
         IsVisibleChanged += (_, _) => UpdateSupportPolling();
         Root.SizeChanged += (_, _) => UpdateRootClip();
+        HeaderBar.SizeChanged += (_, _) => FitNav();
 
         BuildLanguageSelectors();
     }
@@ -177,7 +178,7 @@ public partial class ColituMainWindow
         ApplyPreferencesToUi();
         ApplyAccount();
         ApplyStatus();
-        _ = Dispatcher.BeginInvoke(() => MoveNavThumb(false), DispatcherPriority.Loaded);
+        _ = Dispatcher.BeginInvoke(FitNav, DispatcherPriority.Loaded);
 
         // A previous offline spell may have left the 20 s retry interval behind.
         _refresh.Interval = offline ? TimeSpan.FromSeconds(20) : TimeSpan.FromMinutes(5);
@@ -399,14 +400,13 @@ public partial class ColituMainWindow
             child.Visibility = child == target ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        // Support has no tab of its own: it opens from the floating launcher.
         var nav = page switch
         {
             "locations" => NavLocations,
             "plan" => NavPlan,
             "account" => NavAccount,
             "settings" => NavSettings,
-            "support" => null,
+            "support" => NavSupport,
             "invite" => null,
             _ => NavHome
         };
@@ -457,6 +457,70 @@ public partial class ColituMainWindow
                 break;
         }
         UpdateSupportPolling();
+    }
+
+    /// <summary>
+    /// Keeps the tab pill inside the header at every window width and language (six tabs, Russian
+    /// labels are the longest): first centred between the fixed side columns with the normal
+    /// spacing; then the side columns take only what they need and the tabs come closer; then
+    /// the wordmark gives way to the mark alone; last a slightly smaller font.
+    /// </summary>
+    private void FitNav()
+    {
+        if (HeaderBar == null || HeaderBar.ActualWidth <= 0)
+        {
+            return;
+        }
+        var unlimited = new Size(double.PositiveInfinity, double.PositiveInfinity);
+        var tabs = NavList.Children.OfType<RadioButton>().Where(tab => tab.Visibility == Visibility.Visible).ToList();
+        double Tabs(double padding, double font)
+        {
+            var width = 8.0; // the pill's padding and border
+            foreach (var tab in tabs)
+            {
+                tab.Padding = new Thickness(padding, 0, padding, 0);
+                tab.FontSize = font;
+                tab.Measure(unlimited);
+                width += tab.DesiredSize.Width;
+            }
+            return width;
+        }
+        BrandWordmark.Visibility = Visibility.Visible;
+        BrandMark.Measure(unlimited);
+        HeaderRight.Measure(unlimited);
+        var total = HeaderBar.ActualWidth;
+        var logo = BrandMark.DesiredSize.Width;
+        var mark = logo - BrandWordmark.DesiredSize.Width - 14;
+        var right = HeaderRight.DesiredSize.Width;
+        const double Gap = 32;
+
+        void Columns(bool fixedSides)
+        {
+            HeaderLeftColumn.Width = fixedSides ? new GridLength(220) : GridLength.Auto;
+            HeaderRightColumn.Width = fixedSides ? new GridLength(220) : GridLength.Auto;
+        }
+
+        var placed = false;
+        if (logo <= 220 && right <= 220 && Tabs(20, 14) <= total - 440 - Gap)
+        {
+            Columns(true);
+            placed = true;
+        }
+        foreach (var (wordmark, padding, font) in new[] { (true, 20.0, 14.0), (true, 16.0, 14.0), (true, 12.0, 14.0), (false, 16.0, 14.0), (false, 12.0, 14.0), (false, 10.0, 13.0) })
+        {
+            if (placed)
+            {
+                break;
+            }
+            var side = (wordmark ? logo : mark) + right;
+            if (Tabs(padding, font) <= total - side - Gap || (padding == 10.0 && font == 13.0))
+            {
+                Columns(false);
+                BrandWordmark.Visibility = wordmark ? Visibility.Visible : Visibility.Collapsed;
+                placed = true;
+            }
+        }
+        Dispatcher.BeginInvoke(() => MoveNavThumb(false), DispatcherPriority.Loaded);
     }
 
     private void MoveNavThumb(bool animate)
@@ -526,7 +590,7 @@ public partial class ColituMainWindow
             // The panel writes the notices in the app's language.
             _ = RefreshNoticesAsync();
         }
-        Dispatcher.BeginInvoke(() => MoveNavThumb(false), DispatcherPriority.Loaded);
+        Dispatcher.BeginInvoke(FitNav, DispatcherPriority.Loaded);
     }
 
     private void BuildLanguageSelectors()
