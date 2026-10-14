@@ -54,6 +54,7 @@ public partial class ColituMainWindow
         SupportLauncher.Visibility = Visibility.Collapsed;
         SupportList.ItemsSource = null;
         SupportMessages.Children.Clear();
+        ResetSupportChat();
         ShowSupportPane(SupportPlaceholder);
     }
 
@@ -249,7 +250,7 @@ public partial class ColituMainWindow
 
     private void ShowSupportPane(FrameworkElement pane)
     {
-        foreach (var candidate in new FrameworkElement[] { SupportPlaceholder, SupportNewForm, SupportThread })
+        foreach (var candidate in new FrameworkElement[] { SupportPlaceholder, SupportNewForm, SupportThread, SupportChat })
         {
             candidate.Visibility = candidate == pane ? Visibility.Visible : Visibility.Collapsed;
         }

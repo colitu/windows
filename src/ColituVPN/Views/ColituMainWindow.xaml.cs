@@ -517,6 +517,7 @@ public partial class ColituMainWindow
         ApplyMfaTexts();
         ApplySplitUi();
         RenderSupportList();
+        RenderSupportChat();
         ApplyInvite();
         RenderSurvey();
         _ = LoadDevicesAsync();
@@ -568,6 +569,8 @@ public partial class ColituMainWindow
             // Rebuilding the selectors inside their own Checked event would recurse; defer it.
             await Dispatcher.InvokeAsync(() => ApplyLanguage(language), DispatcherPriority.Background);
             await _vpn.UpdatePreferencesAsync(_vpn.Preferences with { Language = language });
+            // The account's e-mails and notices follow the app's language.
+            _ = ColituAuthService.Instance.ReportLanguageAsync();
         }
         catch (Exception ex)
         {
