@@ -2531,13 +2531,13 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         await OnTunnelLostAsync();
     }
 
-    /// <summary>A Russian and a foreign address that accept TCP connections (Yandex DNS, Cloudflare).</summary>
+    /// <summary>Russian and foreign addresses that accept TCP connections (Yandex, Google, OpenDNS; no Cloudflare, throttled in Russia).</summary>
     // Port 443 only: sing-box's strict route refuses port 53 outside the tunnel ("access denied").
     private static readonly (string Name, IPAddress Address, int Port)[] PathReferences =
     [
         ("yandex-dns", IPAddress.Parse("77.88.8.8"), 443),
         ("yandex", IPAddress.Parse("77.88.55.242"), 443),
-        ("cloudflare", IPAddress.Parse("1.1.1.1"), 443),
+        ("opendns", IPAddress.Parse("208.67.222.222"), 443),
         ("google", IPAddress.Parse("8.8.8.8"), 443),
     ];
 
@@ -4594,7 +4594,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     /// <summary>Generic connectivity checks, never the Colitu API; the first 2xx answer through the tunnel counts.</summary>
     internal static readonly string[] TrafficProbeUrls =
     [
-        "https://cp.cloudflare.com/generate_204",
+        // No Cloudflare: it is throttled in Russia.
+        "https://www.apple.com/library/test/success.html",
         "https://www.gstatic.com/generate_204",
         "http://www.msftconnecttest.com/connecttest.txt"
     ];
