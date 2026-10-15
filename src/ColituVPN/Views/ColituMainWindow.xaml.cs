@@ -72,6 +72,8 @@ public partial class ColituMainWindow
             UpdateSupportPolling();
         };
         IsVisibleChanged += (_, _) => UpdateSupportPolling();
+        Activated += async (_, _) => await CheckDiagnosticsRequestAsync();
+        PreviewKeyDown += DiagPrompt_PreviewKeyDown;
         Root.SizeChanged += (_, _) => UpdateRootClip();
         HeaderBar.SizeChanged += (_, _) => FitNav();
 

@@ -1705,6 +1705,24 @@
             </Border>
         </Grid>
 
+        <!-- ── A support agent asked for this device's connection report ──────── -->
+        <Grid x:Name="DiagPrompt" Background="#B3050508" Visibility="Collapsed">
+            <Border Width="480" Padding="34,32" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource Panel}">
+                <StackPanel>
+                    <Grid Width="56" Height="56" HorizontalAlignment="Left">
+                        <Ellipse Fill="{StaticResource IconWellBrush}" Stroke="{StaticResource LineStrongBrush}" StrokeThickness="1" />
+                        <Path Width="22" Height="22" Data="{StaticResource IconFile}" Stretch="Uniform" Stroke="{StaticResource LilacBrush}" StrokeLineJoin="Round" StrokeThickness="1.8" />
+                    </Grid>
+                    <TextBlock Margin="0,20,0,0" Style="{StaticResource H2}" Text="{s:T support.diag.title}" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,10,0,0" Style="{StaticResource Muted}" Text="{s:T support.diag.body}" TextWrapping="Wrap" />
+                    <Button x:Name="DiagSendButton" Height="50" Margin="0,22,0,0" HorizontalAlignment="Stretch" Click="DiagPromptSend_Click" Style="{StaticResource PrimaryButton}">
+                        <TextBlock FontSize="15" Text="{s:T support.diag.send}" />
+                    </Button>
+                    <Button x:Name="DiagDeclineButton" Height="46" Margin="0,10,0,0" HorizontalAlignment="Stretch" Click="DiagPromptDecline_Click" Content="{s:T support.diag.decline}" Style="{StaticResource SecondaryButton}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <!-- ── Update prompt (on start, over every screen) ───────────────────── -->
         <Grid x:Name="UpdatePrompt" Background="#B3050508" Visibility="Collapsed">
             <Border Width="440" Padding="34,32" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource Panel}">
