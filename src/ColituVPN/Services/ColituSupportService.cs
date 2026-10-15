@@ -69,20 +69,41 @@ public sealed partial class ColituSupportService
         return ColituDiagnosticsAsker.Parse(await response.Content.ReadAsStringAsync());
     }
 
-    /// <summary>Uploads the full report; <paramref name="requestId"/> only when the user answers a request.</summary>
-    public async Task UploadDiagnosticsAsync(string conversationId, string? requestId, string report)
+    /// <summary>Uploads the full report to a new support conversation (auto-attach).</summary>
+    public async Task UploadDiagnosticsAsync(string conversationId, string report)
     {
-        var body = ColituDiagnosticsAsker.BuildUploadBody(requestId, report, ColituAuthService.ClientPlatform, ColituAuthService.ClientVersion, Environment.OSVersion.VersionString);
         using var response = await _auth.SendAuthorizedRequestAsync(() => new HttpRequestMessage(HttpMethod.Post, _auth.ApiUri($"/support/conversations/{Uri.EscapeDataString(conversationId)}/diagnostics"))
         {
-            Content = new StringContent(body, Encoding.UTF8, "application/json")
+            Content = ReportContent(report)
         }, transfer: true);
     }
 
-    public async Task DeclineDiagnosticsRequestAsync(string requestId)
+    /// <summary>
+    /// Answers an agent's request with the report (204). A 404 means the request is no longer
+    /// pending: treated as answered (true), never retried.
+    /// </summary>
+    public async Task<bool> ReportDiagnosticsAsync(string requestId, string report)
     {
-        using var response = await _auth.SendAuthorizedRequestAsync(() => new HttpRequestMessage(HttpMethod.Post, _auth.ApiUri($"/support/diagnostics-requests/{Uri.EscapeDataString(requestId)}/decline")));
+        try
+        {
+            using var response = await _auth.SendAuthorizedRequestAsync(() => new HttpRequestMessage(HttpMethod.Post, _auth.ApiUri($"/support/diagnostics-requests/{Uri.EscapeDataString(requestId)}/report"))
+            {
+                Content = ReportContent(report)
+            }, transfer: true);
+            return true;
+        }
+        catch (ColituApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return true;
+        }
     }
+
+    private static StringContent ReportContent(string report)
+    {
+        var body = ColituDiagnosticsAsker.BuildUploadBody(report, ColituAuthService.ClientPlatform, ColituAuthService.ClientVersion, Environment.OSVersion.VersionString);
+        return new StringContent(body, Encoding.UTF8, "application/json");
+    }
+
 
     /// <summary>
     /// Where opened attachments go: under the app's admin-only guiTemps, never the user's
@@ -291,11 +312,13 @@ public sealed partial class ColituSupportService
     /// <summary>
     /// The full plain-text connection report (device, versions, connection state, last errors and a
     /// long tail of the app log, which already carries the cores' filtered output). Redacted like
-    /// <see cref="CollectDiagnostics"/>; the cores' own log files are not read, they list visited sites.
+    /// <see cref="CollectDiagnostics"/>, then <see cref="ColituSiteRedaction"/> hides visited sites; the
+    /// cores' own log files are not read.
     /// </summary>
     public static string BuildFullReport()
     {
-        return ColituDiagnosticsAsker.BuildReportText(CollectFields(), ReadLogTail(FullReportLogChars), DateTimeOffset.UtcNow);
+        var text = ColituDiagnosticsAsker.BuildReportText(CollectFields(), ReadLogTail(FullReportLogChars), DateTimeOffset.UtcNow);
+        return ColituSiteRedaction.Apply(text, ColituVpnService.Instance.KnownServerHosts());
     }
 
     private static ColituSupportDiagnostics CollectFields()
