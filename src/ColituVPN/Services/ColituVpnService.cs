@@ -2088,7 +2088,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
 
 
     // ── Adaptive Connect 2.0: mid-session watcher, spare probe, spare swap ──
-    private static readonly TimeSpan WatchProbeTimeout = TimeSpan.FromSeconds(4);
+    /// <summary>A check through a working tunnel answers in well under a second; 3 s is a miss.</summary>
+    private static readonly TimeSpan WatchProbeTimeout = TimeSpan.FromSeconds(3);
 
     /// <summary>
     /// Every 5 s for the first 90 s after the connect, then every 30 s (every transport). With a spare
@@ -2099,7 +2100,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     {
         SampleTraffic(now);
         var sinceConnect = ConnectedAt is { } at ? DateTimeOffset.Now - at : TimeSpan.Zero;
-        if (now - _lastTrafficCheckAt < (long)ColituTunnelWatch.Interval(sinceConnect).TotalMilliseconds)
+        if (now - _lastTrafficCheckAt < (long)ColituTunnelWatch.Interval(sinceConnect, _watch.Confirming).TotalMilliseconds)
         {
             await WatchSpareAsync(now);
             return;
@@ -2524,7 +2525,9 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             // Before the core goes down for the restart: nothing may leave outside the tunnel meanwhile.
             await EngageKillSwitchAsync("restarting the VPN core");
         }
-        if (await TryRestartCoreAsync(reason) || _userDisconnected)
+        // After a watcher verdict one short check is enough (the paths were just seen dead); the
+        // full two-round check cost about 11 s before the reconnect could start.
+        if (await TryRestartCoreAsync(reason, quick: !coreStopped) || _userDisconnected)
         {
             if (_userDisconnected)
             {
@@ -2542,6 +2545,13 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             if (await InternetReachableDirectAsync())
             {
                 var shortMark = _adaptive.MarkMidSessionStall(_networkKey, ConnectedServer?.Id, _activeTransport, DateTimeOffset.UtcNow, provisional: true);
+                if (ShouldLeaveServerAfterRestart(IsAutoSelection, internetDirect: true) && ConnectedServer?.Id is { } deadServer)
+                {
+                    // Primary and spare carried nothing and a restart did not help: the reconnect
+                    // tried this server's transports first (about 9 s) before the next server.
+                    _adaptive.Penalize(_networkKey, deadServer, DateTimeOffset.UtcNow);
+                    LogConnection($"Server {deadServer} carried nothing after a restart; penalized for 30 minutes, the reconnect starts on the next server");
+                }
                 SaveState();
                 LogConnection(shortMark
                     ? $"Transport {_activeTransport} stalled; proven here: short penalty, it goes last on this server and network for 90 s"
@@ -2555,6 +2565,12 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         LogConnection("Restarting the core did not bring traffic back; reconnecting");
         await OnTunnelLostAsync();
     }
+
+    /// <summary>
+    /// Automatic mode leaves a server whose paths all died mid-session and a core restart did not
+    /// bring back, while the internet works outside the tunnel. A server the user picked is kept.
+    /// </summary>
+    internal static bool ShouldLeaveServerAfterRestart(bool automatic, bool internetDirect) => automatic && internetDirect;
 
     /// <summary>Russian and foreign addresses that accept TCP connections (Yandex, Google, OpenDNS; no Cloudflare, throttled in Russia).</summary>
     // Port 443 only: sing-box's strict route refuses port 53 outside the tunnel ("access denied").
