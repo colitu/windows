@@ -2545,7 +2545,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             if (await InternetReachableDirectAsync())
             {
                 var shortMark = _adaptive.MarkMidSessionStall(_networkKey, ConnectedServer?.Id, _activeTransport, DateTimeOffset.UtcNow, provisional: true);
-                if (ShouldLeaveServerAfterRestart(IsAutoSelection, internetDirect: true) && ConnectedServer?.Id is { } deadServer)
+                if (ShouldLeaveServerAfterRestart(IsAutoSelection, internetDirect: true, bothPathsDead: deferAs == ColituWatchAction.Reconnect) && ConnectedServer?.Id is { } deadServer)
                 {
                     // Primary and spare carried nothing and a restart did not help: the reconnect
                     // tried this server's transports first (about 9 s) before the next server.
@@ -2567,10 +2567,12 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     }
 
     /// <summary>
-    /// Automatic mode leaves a server whose paths all died mid-session and a core restart did not
-    /// bring back, while the internet works outside the tunnel. A server the user picked is kept.
+    /// Automatic mode leaves a server whose primary and spare both died mid-session and a core
+    /// restart did not bring back, while the internet works outside the tunnel. Only the primary
+    /// dead (no spare): its server's other transports come first, as before. A picked server is
+    /// kept. Same rule on Android and Linux.
     /// </summary>
-    internal static bool ShouldLeaveServerAfterRestart(bool automatic, bool internetDirect) => automatic && internetDirect;
+    internal static bool ShouldLeaveServerAfterRestart(bool automatic, bool internetDirect, bool bothPathsDead) => automatic && internetDirect && bothPathsDead;
 
     /// <summary>Russian and foreign addresses that accept TCP connections (Yandex, Google, OpenDNS; no Cloudflare, throttled in Russia).</summary>
     // Port 443 only: sing-box's strict route refuses port 53 outside the tunnel ("access denied").
