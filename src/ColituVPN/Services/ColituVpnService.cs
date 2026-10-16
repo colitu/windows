@@ -660,7 +660,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 // The kill switch blocks DNS outside the tunnel, and Windows resolves names in the
                 // system DNS client, not in this app: look the panel up now (the last good
                 // addresses stay when it is already armed) and dial those addresses later.
-                await ColituPinnedHosts.RefreshAsync(PinnedAppHosts(), token);
+                await RefreshAppPinsAsync(token);
                 // Armed before the first packet of the session (TUN and proxy mode): this app may
                 // reach the panel and resolve the server, nothing else gets out until the tunnel is up.
                 var wasEngaged = KillSwitchEngaged;
@@ -1812,6 +1812,9 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     /// </summary>
     public async Task RecoverFromPreviousRunAsync()
     {
+        // The API's last good addresses: with the kill switch held the system resolver is blocked
+        // and nothing else would find the panel.
+        ColituPinnedHosts.LoadSaved(Utils.GetConfigPath(PinnedHostsFile));
         try
         {
             await RecoverKillSwitchAsync();
@@ -1821,8 +1824,9 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 // blocked or not back yet, so the first panel call at start-up failed ("no such
                 // host") and the account and plan stayed unloaded until the next connect pinned the
                 // addresses. Pin them now (DoH from this app is allowed).
-                using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-                await ColituPinnedHosts.RefreshAsync(PinnedAppHosts(), budget.Token);
+                // Not disposed: the refresh may go on in the background (RefreshAppPinsAsync).
+                var budget = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                await RefreshAppPinsAsync(budget.Token);
             }
         }
         catch (Exception ex)
@@ -3195,6 +3199,30 @@ public sealed class ColituVpnService : IColituKillSwitchControl
 
     /// <summary>The cores' bootstrap resolvers (EnsureCoreReadyAsync): reachable outside the tunnel to find the DoH servers.</summary>
     private static readonly string[] BootstrapResolvers = ["1.1.1.1", "8.8.8.8"];
+
+    /// <summary>Last good addresses of <see cref="PinnedAppHosts"/>, kept across runs (<see cref="ColituPinnedHosts.LoadSaved"/>).</summary>
+    internal const string PinnedHostsFile = "colitu-pinned-hosts.json";
+
+    /// <summary>
+    /// Pins the app's hosts again (<see cref="PinnedAppHosts"/>). While the kill switch already
+    /// blocks the system resolver and every host has addresses (saved or from earlier), the
+    /// refresh goes on in the background: waiting for it only cost the resolver timeouts (4 s per
+    /// connect after a crash or a reboot with auto-connect).
+    /// </summary>
+    private Task RefreshAppPinsAsync(CancellationToken token)
+    {
+        var hosts = PinnedAppHosts().Where(host => !string.IsNullOrWhiteSpace(host)).ToList();
+        var refresh = ColituPinnedHosts.RefreshAsync(hosts, token);
+        if (!ShouldAwaitPinRefresh(KillSwitchEngaged, hosts.All(host => ColituPinnedHosts.AddressesOf(host).Count > 0)))
+        {
+            _ = refresh.ContinueWith(task => _ = task.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+            return Task.CompletedTask;
+        }
+        return refresh;
+    }
+
+    /// <summary>A connect waits for the pin refresh unless the kill switch already blocks the resolver and every host is pinned.</summary>
+    internal static bool ShouldAwaitPinRefresh(bool killSwitchEngaged, bool everyHostPinned) => !(killSwitchEngaged && everyHostPinned);
 
     /// <summary>Hosts the app itself calls while the kill switch is armed: the panel API and the update manifest.</summary>
     private static IEnumerable<string?> PinnedAppHosts()

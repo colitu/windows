@@ -106,9 +106,10 @@ public partial class ColituMainWindow
         // A slow or unreachable panel (common from Russia) kept the loading screen up and the
         // auto-connect waiting for up to a minute. With a saved session, continue after a few
         // seconds with the cached account; the check finishes in the background.
-        if (_auth.HasSession && await Task.WhenAny(initialize, Task.Delay(StartupPanelWait)) != initialize)
+        var panelWait = StartupPanelWaitFor(_vpn.KillSwitchHeldAfterCrash);
+        if (_auth.HasSession && await Task.WhenAny(initialize, Task.Delay(panelWait)) != initialize)
         {
-            Logging.SaveLog($"ColituMainWindow | Panel did not answer within {StartupPanelWait.TotalSeconds:0} s at startup; starting with the saved account");
+            Logging.SaveLog($"ColituMainWindow | Panel did not answer within {panelWait.TotalSeconds:0} s at startup; starting with the saved account");
             _ = initialize.ContinueWith(task => Dispatcher.BeginInvoke(async () => await OnLateStartupStateAsync(task.Result)),
                 CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
             await EnterAppAsync(offline: true);
@@ -140,6 +141,13 @@ public partial class ColituMainWindow
     }
 
     private static readonly TimeSpan StartupPanelWait = TimeSpan.FromSeconds(6);
+
+    /// <summary>
+    /// How long start-up waits for the panel before it continues with the saved account. While the
+    /// kill switch is held from the previous run (crash, reboot with auto-connect) the PC has no
+    /// internet until the automatic connect: 2 s, so that connect is not held back for 6 s.
+    /// </summary>
+    internal static TimeSpan StartupPanelWaitFor(bool killSwitchHeld) => killSwitchHeld ? TimeSpan.FromSeconds(2) : StartupPanelWait;
 
     /// <summary>The startup check answered after the app had opened with the saved account.</summary>
     private async Task OnLateStartupStateAsync(ColituStartupState state)
