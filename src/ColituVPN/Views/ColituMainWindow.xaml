@@ -1231,6 +1231,17 @@
                                             </StackPanel>
                                             <CheckBox x:Name="SettingsWarmSpare" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
                                         </Grid>
+                                        <Grid x:Name="SettingsCslRow" Margin="0,18,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Margin="0,0,16,0">
+                                                <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.cslAlpha}" />
+                                                <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.cslAlphaHint}" />
+                                            </StackPanel>
+                                            <CheckBox x:Name="SettingsCsl" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                        </Grid>
                                         <Grid Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />

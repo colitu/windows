@@ -412,3 +412,5 @@ obj/
 
 # Adaptive Connect engine sidecar (built in the colitu-csl repo: engine/build.sh)
 engine-dosyalari/
+# CSL alpha client sidecar (built in the colitu-csl repo: cmd/csl-client)
+csl-dosyalari/

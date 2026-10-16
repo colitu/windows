@@ -67,6 +67,14 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     private volatile ColituSparePlan? _sparePlan;
     /// <summary>Automatic mode: the next ranked server's transports, fetched next to the primary's settings.</summary>
     private ColituSpareServer? _spareServer;
+    // CSL alpha (ColituCsl): the current connect's server settings, why it fell back (kept until the
+    // next connect), the next core start's plan, what the running config got, the running csl-client.
+    private ColituCslConfig? _cslConfig;
+    private bool _cslMultihop;
+    private volatile string? _cslFailure;
+    private volatile ColituCslPlan? _cslPlan;
+    private volatile ColituCslApplied? _cslApplied;
+    private volatile ColituCslRun? _cslRun;
     /// <summary>The running core's loopback check inbound that reaches the primary only; null without a spare.</summary>
     private volatile ColituVerifyInbound? _verifyInbound;
     /// <summary>The running core's second check inbound, to the spare alone; null without a spare.</summary>
@@ -152,6 +160,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         StartWatchdog();
         // Instantly, not at the next watchdog tick.
         CoreManager.Instance.CoreExited += OnCoreExited;
+        ColituCsl.Instance.Exited += OnCslExited;
     }
 
     public event Action<ColituVpnStatus>? StatusChanged;
@@ -617,6 +626,9 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         _sparePlan = null;
         _spareServer = null;
         _pendingSpare = null;
+        // CSL alpha is tried again at every connect.
+        _cslConfig = null;
+        _cslFailure = null;
         ResetSpareSwapDeferral();
         _failedThisConnect.Clear();
         _apiUnreachable = false;
@@ -773,6 +785,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
 
                 connected = FindServer(config.ServerId) ?? config.Server ?? target;
                 var connectedId = config.ServerId ?? connected?.Id;
+                _cslConfig = config.Csl;
+                _cslMultihop = connected is { IsMultihop: true } || config.Server is { IsMultihop: true };
                 _attemptNodeId = connected is { IsMultihop: true } ? null : ColituAcSpec.NodeId(connectedId) ?? _attemptNodeId;
                 try
                 {
@@ -867,6 +881,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 }
             }
 
+            await SettleCslAsync(connected, token);
             ConnectedServer = connected;
             ConnectedAt = DateTimeOffset.Now;
             ConnectStage = null;
@@ -890,6 +905,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             _hold.Connected();
             await ApplyKillSwitchForConnectedTunnelAsync();
             SetStatus(ColituVpnStatus.Connected);
+            CheckCslStillRunning();
             EmitConnectEvent(true, connectWatch.ElapsedMilliseconds, automatic, server, null);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -1107,7 +1123,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     /// </summary>
     private string PostProcessConfig(CoreConfigContext context, string json)
     {
-        json = AddCheckInbound(context, ApplyWarmSpare(context, ApplyPingRoute(context, json)));
+        json = AddCheckInbound(context, ApplyCsl(context, ApplyWarmSpare(context, ApplyPingRoute(context, json))));
         // Last, over everything the stages added: Xray 26.10 refuses repeated rule tags.
         return context.RunCoreType == ECoreType.Xray ? ColituXrayRuleTags.Unique(json) : json;
     }
@@ -1264,6 +1280,145 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         {
             Logging.SaveLog("ColituVpnService.ApplyWarmSpare", ex);
             return json;
+        }
+    }
+
+    // ── CSL alpha (ColituCsl) ──────────────────────────────────────────────
+    /// <summary>
+    /// CSL for the core about to start, or null. The spare carrier only when the warm spare runs on
+    /// the same server: another node's CSL port does not know this session.
+    /// </summary>
+    private ColituCslPlan? PlanCsl(ProfileItem profile)
+    {
+        var preferenceOn = Preferences.CslAlphaEnabled;
+        var reason = ColituCslRules.OffReason(preferenceOn, _cslConfig, _cslMultihop, File.Exists(ColituCsl.ExecutablePath), _cslFailure);
+        if (reason != null)
+        {
+            // Only those who turned it on hear about it.
+            if (preferenceOn)
+            {
+                LogConnection($"CSL alpha: off ({reason})");
+            }
+            return null;
+        }
+        var spare = _sparePlan is { NextServerId: null } plan && string.Equals(plan.PrimaryIndexId, profile.IndexId, StringComparison.Ordinal) ? plan : null;
+        return new ColituCslPlan(profile.IndexId, ColituWarmSpare.NewVerifyInbound().Port, _cslConfig!.Port,
+            ColituWarmSpare.NewVerifyInbound(), ColituCslRules.FamilyOf(profile.ConfigType),
+            spare != null ? ColituWarmSpare.NewVerifyInbound() : null, spare != null ? ColituCslRules.FamilyOf(spare.Spare.ConfigType) : null);
+    }
+
+    /// <summary>The CSL stage of <see cref="PostProcessConfig"/>: the main core's config only; without a plan the config is returned as it is.</summary>
+    private string ApplyCsl(CoreConfigContext context, string json)
+    {
+        var plan = _cslPlan;
+        if (plan == null || !string.Equals(context.Node?.IndexId, plan.PrimaryIndexId, StringComparison.Ordinal))
+        {
+            return json;
+        }
+        try
+        {
+            if (ColituCslRules.Apply(json, context.RunCoreType == ECoreType.sing_box, plan) is { } applied)
+            {
+                _cslApplied = applied;
+                return applied.Config;
+            }
+            _cslFailure = $"the {context.RunCoreType} config could not take CSL";
+            LogConnection($"CSL alpha: off ({_cslFailure})");
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("ColituVpnService.ApplyCsl", ex);
+        }
+        return json;
+    }
+
+    /// <summary>Starts csl-client for a core whose config got CSL; false when it could not start (the caller reloads without CSL).</summary>
+    private bool StartCsl()
+    {
+        if (_cslApplied is not { } applied || _cslPlan is not { } plan || _cslConfig?.Credential is not { } credential)
+        {
+            return true;
+        }
+        try
+        {
+            var launch = new ColituCslLaunch(plan.SocksPort, plan.ServerPort, ColituCslRules.Carriers(plan, applied.SpareAttached));
+            _cslRun = ColituCsl.Instance.Start(launch, credential, LogConnection);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ColituCsl.Instance.Stop();
+            _cslRun = null;
+            _cslFailure = $"csl-client could not start ({ex.GetType().Name})";
+            LogConnection($"CSL alpha: off ({_cslFailure})");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// After the connect check passed (it runs through the check inbounds, outside CSL): csl-client
+    /// has a carrier within 10 s of its start, or the core is reloaded without CSL.
+    /// </summary>
+    private async Task SettleCslAsync(ColituVpnServer? server, CancellationToken token)
+    {
+        if (_cslRun is not { } run)
+        {
+            return;
+        }
+        var verdict = await run.Ready.WaitAsync(token);
+        if (verdict.Length == 0)
+        {
+            LogConnection($"CSL alpha: on (carriers {run.Launch.Describe()})");
+            return;
+        }
+        _cslFailure = verdict;
+        _cslRun = null;
+        LogConnection($"CSL alpha: off ({verdict}); reloading the core without CSL");
+        ColituCsl.Instance.Stop();
+        await ReloadCoreAsync(token);
+        var probe = await VerifyConnectionActiveAsync(server, 1, token, TimeSpan.FromSeconds(5));
+        LogConnection($"Core without CSL: traffic check {(probe.Success ? "passed" : "failed (the watcher takes over)")}");
+    }
+
+    /// <summary>csl-client was on and exited: TCP has nowhere to go, so the core is restarted without CSL.</summary>
+    private void OnCslExited(string reason)
+    {
+        if (Status != ColituVpnStatus.Connected || _userDisconnected)
+        {
+            // A connect or restart in progress settles CSL itself (and checks it once connected).
+            return;
+        }
+        _cslFailure = reason;
+        _cslRun = null;
+        LogConnection($"CSL alpha: off ({reason}); restarting the core without CSL");
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Another restart may hold the connection lock (it is skipped then): try a few times
+                // until the running config has no CSL.
+                for (var attempt = 0; attempt < 5 && _cslApplied != null && Status == ColituVpnStatus.Connected && !_userDisconnected; attempt++)
+                {
+                    await TryRestartCoreAsync("CSL alpha off", quick: true);
+                    if (_cslApplied != null)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.SaveLog("ColituVpnService.OnCslExited", ex);
+            }
+        });
+    }
+
+    /// <summary>Right after "Connected": a csl-client that exited while the connect was finishing.</summary>
+    private void CheckCslStillRunning()
+    {
+        if (_cslRun != null && !ColituCsl.Instance.Running)
+        {
+            OnCslExited("csl-client exited");
         }
     }
 
@@ -2724,9 +2879,11 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             {
                 return false;
             }
+            await SettleCslAsync(ConnectedServer, token);
             _failedChecks = 0;
             _failedDnsChecks = 0;
             SetStatus(ColituVpnStatus.Connected);
+            CheckCslStillRunning();
             LogConnection("VPN core restarted; traffic flows again");
             Notice?.Invoke("info.reconnected");
             return true;
@@ -4504,6 +4661,11 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         _spareVerifyInbound = null;
         _checkInbound = null;
         _checkIndexId = profileItem.IndexId;
+        // A csl-client of the previous core cannot reach the new one's inbounds.
+        ColituCsl.Instance.Stop();
+        _cslRun = null;
+        _cslApplied = null;
+        _cslPlan = PlanCsl(profileItem);
         await CoreManager.Instance.LoadCore(mainContext, allResult.PreSocksResult?.Context);
 
         // The core needs a moment to load its geo data, longer on the first run
@@ -4531,6 +4693,12 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         if (!listening)
         {
             throw new InvalidOperationException($"VPN core started but local SOCKS port {socksPort} is not listening.");
+        }
+        if (!StartCsl())
+        {
+            // The core sends TCP to a csl-client that is not there: the same core without CSL.
+            await ReloadCoreAsync(token);
+            return;
         }
 
         if (_config.TunModeItem.EnableTun)
@@ -4836,6 +5004,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     /// <summary>Stops the core and removes its generated config files, which contain the server credentials.</summary>
     private static async Task StopCoreAsync()
     {
+        // csl-client first (it also deletes the credential file); it only talks to the core.
+        ColituCsl.Instance.Stop();
         await CoreManager.Instance.CoreStop();
         foreach (var name in new[] { Global.CoreConfigFileName, Global.CorePreConfigFileName })
         {
@@ -5276,6 +5446,8 @@ public sealed class ColituVpnConfigResponse
     public string? ExpiresAt { get; set; }
     public DateTimeOffset? OfflineGraceUntil { get; set; }
     public bool Unlimited { get; set; }
+    /// <summary>CSL alpha settings of this server for this device; null when it offers none.</summary>
+    public ColituCslConfig? Csl { get; set; }
 }
 
 public sealed class ColituConnectResponse
@@ -5419,7 +5591,9 @@ public sealed record ColituVpnPreferences(
     // start in Simple mode (ForNewInstall).
     bool AdvancedMode = true,
     // Order of the Locations list: name (the order before 2.9), ping or load (ColituLocationSort).
-    string LocationSort = ColituLocationSort.Name)
+    string LocationSort = ColituLocationSort.Name,
+    // CSL alpha (Advanced mode): open TCP connections survive a carrier change; only on servers whose settings carry "csl".
+    bool CslAlphaEnabled = false)
 {
     /// <summary>
     /// Preferences of a first run (no saved state yet): privacy mode on, Simple mode. The record

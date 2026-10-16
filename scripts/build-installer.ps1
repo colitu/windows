@@ -170,6 +170,14 @@ $binEngineDir = Join-Path $publishDir "bin\colitu-engine"
 New-Item -ItemType Directory -Force -Path $binEngineDir | Out-Null
 Copy-Listed $engineSourceDir @("colitu-engine.exe") $binEngineDir
 
+# CSL alpha (Colitu Session Layer, colitu-csl repo cmd/csl-client): built with
+# `$env:CGO_ENABLED=0; go build -trimpath -ldflags "-s -w" -o <this repo>\csl-dosyalari\<runtime>\csl-client.exe ./cmd/csl-client`.
+# Opt-in in Advanced mode, used only when the server's settings carry "csl"; without the file the app connects as before.
+$cslSourceDir = Join-Path $repoRoot "csl-dosyalari\$Runtime"
+$binCslDir = Join-Path $publishDir "bin\colitu-csl"
+New-Item -ItemType Directory -Force -Path $binCslDir | Out-Null
+Copy-Listed $cslSourceDir @("csl-client.exe") $binCslDir
+
 $binSingboxDir = Join-Path $publishDir "bin\sing_box"
 New-Item -ItemType Directory -Force -Path $binSingboxDir | Out-Null
 Copy-Listed $singboxSourceDir $singboxFiles $binSingboxDir

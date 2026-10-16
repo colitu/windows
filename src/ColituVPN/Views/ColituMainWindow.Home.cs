@@ -562,6 +562,7 @@ public partial class ColituMainWindow
             SettingsAdBlockRow.Visibility = ColituVpnService.AdBlockAvailable ? Visibility.Visible : Visibility.Collapsed;
             SettingsPrivacy.IsChecked = preferences.PrivacyModeEnabled;
             SettingsWarmSpare.IsChecked = preferences.WarmSpareEnabled;
+            SettingsCsl.IsChecked = preferences.CslAlphaEnabled;
             SettingsTray.IsChecked = preferences.CloseToTray;
             SettingsStartup.IsChecked = _vpn.LaunchAtStartup;
             ApplyInsightUi();
@@ -619,6 +620,7 @@ public partial class ColituMainWindow
             : box == SettingsTray ? preferences with { CloseToTray = on }
             : box == SettingsKillSwitchLan ? preferences with { KillSwitchAllowLan = on }
             : box == SettingsWarmSpare ? preferences with { WarmSpareEnabled = on }
+            : box == SettingsCsl ? preferences with { CslAlphaEnabled = on }
             : preferences;
         await SavePreferencesAsync(preferences);
     }
@@ -632,6 +634,7 @@ public partial class ColituMainWindow
             || preferences.AdBlockEnabled != _vpn.Preferences.AdBlockEnabled
             || preferences.PrivacyModeEnabled != _vpn.Preferences.PrivacyModeEnabled
             || preferences.WarmSpareEnabled != _vpn.Preferences.WarmSpareEnabled
+            || preferences.CslAlphaEnabled != _vpn.Preferences.CslAlphaEnabled
             || SplitSettingsChanged(preferences, _vpn.Preferences)
             || (preferences.IsTunMode && preferences.KillSwitchEnabled != _vpn.Preferences.KillSwitchEnabled);
         try

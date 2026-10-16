@@ -214,7 +214,8 @@ public sealed class ColituApiClient
             Candidates = candidates,
             Revision = envelope.Revision,
             ExpiresAt = envelope.ExpiresAt?.ToString("O", CultureInfo.InvariantCulture),
-            OfflineGraceUntil = envelope.OfflineGraceUntil
+            OfflineGraceUntil = envelope.OfflineGraceUntil,
+            Csl = envelope.Csl
         };
     }
 
@@ -965,6 +966,8 @@ internal sealed class ColituConfigEnvelopeDto
     [JsonPropertyName("server")] public ColituConfigServerDto? Server { get; set; }
     [JsonPropertyName("profile")] public ColituConfigProfileDto? Profile { get; set; }
     [JsonPropertyName("candidates")] public List<ColituConfigCandidateDto>? Candidates { get; set; }
+    /// <summary>CSL alpha (tester accounts on a CSL node only); absent otherwise. Carries a secret: never logged.</summary>
+    [JsonPropertyName("csl")] public ColituCslConfig? Csl { get; set; }
 }
 
 internal sealed class ColituConfigServerDto

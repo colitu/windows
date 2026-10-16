@@ -648,6 +648,8 @@ public sealed class Loc : INotifyPropertyChanged
         ["mode.advancedSettingsOn"] = ["Включены расширенные настройки", "Gelişmiş ayarlar etkin", "Advanced settings on"],
         // Warm spare: a second path inside the core.
         ["settings.warmSpare"] = ["Резервный канал", "Yedek hat", "Warm spare"],
+        ["settings.cslAlpha"] = ["Непрерывная сессия (альфа)", "Kesintisiz oturum (alpha)", "Seamless session (alpha)"],
+        ["settings.cslAlphaHint"] = ["Открытые загрузки и звонки по TCP не обрываются, когда меняется канал или сеть. Работает только на тестовых серверах", "Hat veya ağ değişince açık TCP indirmeleri ve görüşmeler kopmaz. Yalnızca test sunucularında çalışır", "Open TCP downloads and calls keep going when the path or the network changes. Works on test servers only"],
         ["settings.warmSpareHint"] = ["Второй путь готов заранее: если основной пропадёт, трафик перейдёт на него за несколько секунд без переподключения", "İkinci bir yol hazır bekler: ana yol koparsa trafik birkaç saniyede, yeniden bağlanmadan ona geçer", "A second path stands ready: if the main one drops, traffic moves to it within seconds, without reconnecting"],
         // In-app notice banner (close button label).
         ["notice.close"] = ["Закрыть уведомление", "Bildirimi kapat", "Dismiss notice"],
