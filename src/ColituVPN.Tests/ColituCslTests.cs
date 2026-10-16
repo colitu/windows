@@ -182,7 +182,7 @@ public class ColituCslTests
 
     private static ColituCslPlan Plan(bool spare) => new("n", 41000, 9440,
         new ColituVerifyInbound(41001, "pu", "pp"), "tcp",
-        spare ? new ColituVerifyInbound(41002, "su", "sp") : null, spare ? "udp" : null);
+        spare ? new ColituVerifyInbound(41002, "su", "sp") : null, spare ? "udp" : null, "cu", "cp-0123456789abcdef");
 
     private static List<JsonObject> Rules(JsonObject root, bool singBox) =>
         (singBox ? root["route"]!["rules"] : root["routing"]!["rules"])!.AsArray().Select(rule => rule!.AsObject()).ToList();
@@ -202,6 +202,8 @@ public class ColituCslTests
         S(outbound["protocol"]).Should().Be("socks");
         outbound["settings"]!["servers"]![0]!["address"]!.GetValue<string>().Should().Be("127.0.0.1");
         outbound["settings"]!["servers"]![0]!["port"]!.GetValue<int>().Should().Be(41000);
+        S(outbound["settings"]!["servers"]![0]!["users"]![0]!["user"]).Should().Be("cu", "csl-client's SOCKS port takes only the per-run account");
+        S(outbound["settings"]!["servers"]![0]!["users"]![0]!["pass"]).Should().Be("cp-0123456789abcdef");
         S(root["outbounds"]![0]!["tag"]).Should().Be("proxy", "the first outbound stays the primary");
 
         var inbound = root["inbounds"]!.AsArray().Select(item => item!.AsObject()).Single(item => S(item["tag"]) == ColituCslRules.PrimaryInboundTag);
@@ -278,6 +280,8 @@ public class ColituCslTests
         S(outbound["type"]).Should().Be("socks");
         S(outbound["server"]).Should().Be("127.0.0.1");
         outbound["server_port"]!.GetValue<int>().Should().Be(41000);
+        S(outbound["username"]).Should().Be("cu");
+        S(outbound["password"]).Should().Be("cp-0123456789abcdef");
 
         var rules = Rules(root, singBox: true);
         S(rules[0]["inbound"]![0]).Should().Be(ColituCslRules.PrimaryInboundTag);
@@ -330,11 +334,17 @@ public class ColituCslTests
         ColituCslRules.Carriers(Plan(true), spareAttached: false).Select(item => item.Label).Should().Equal("primary");
         var carriers = ColituCslRules.Carriers(Plan(true), spareAttached: true);
         carriers.Select(item => item.Label).Should().Equal("primary", "spare");
-        var args = ColituCslRules.Arguments(new ColituCslLaunch(41000, 9440, carriers), @"C:\x\colitu-csl-credential.txt");
-        args.Should().Equal("-socks", "127.0.0.1:41000", "-credential-file", @"C:\x\colitu-csl-credential.txt",
+        var launch = new ColituCslLaunch(41000, 9440, carriers, "cu", "cp-0123456789abcdef");
+        var args = ColituCslRules.Arguments(launch);
+        args.Should().Equal("-socks", "127.0.0.1:41000", "-secrets-stdin",
             "-carrier", "socks5://pu:pp@127.0.0.1:41001/127.0.0.1:9440?family=tcp#primary",
             "-carrier", "socks5://su:sp@127.0.0.1:41002/127.0.0.1:9440?family=udp#spare", "-v");
-        string.Join(" ", args).Should().NotContain(Credential);
+        string.Join(" ", args).Should().NotContain(Credential).And.NotContain("cp-0123456789abcdef");
+        var secrets = JsonNode.Parse(ColituCslRules.Secrets(launch, Credential))!.AsObject();
+        S(secrets["credential"]).Should().Be(Credential);
+        S(secrets["socks_user"]).Should().Be("cu");
+        S(secrets["socks_password"]).Should().Be("cp-0123456789abcdef");
+        ColituCslRules.Secrets(launch, Credential).Should().EndWith("\n", "csl-client reads one line");
         ColituCslRules.FamilyOf(EConfigType.Hysteria2).Should().Be("udp");
         ColituCslRules.FamilyOf(EConfigType.VLESS).Should().Be("tcp");
     }
@@ -364,27 +374,17 @@ public class ColituCslTests
         ColituCslRules.OffReason(true, csl, false, true, null).Should().BeNull();
     }
 
-    // ── Credential file ────────────────────────────────────────────────────
+    // ── Credential: stdin only; an older version's file is removed ──────
 
     [Fact]
-    public void CredentialFile_IsTheCurrentUsersAndSystemsOnly_AndDeleted()
+    public void LegacyCredentialFile_IsDeleted()
     {
         var dir = Path.Combine(Path.GetTempPath(), "colitu-csl-test-" + Guid.NewGuid().ToString("N"));
         var path = Path.Combine(dir, "colitu-csl-credential.txt");
         try
         {
-            ColituCslRules.WriteCredentialFile(path, Credential);
-            File.ReadAllText(path).Should().Be(Credential);
-            var security = new FileInfo(path).GetAccessControl();
-            security.AreAccessRulesProtected.Should().BeTrue("nothing is inherited from the folder");
-            var sids = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).OfType<FileSystemAccessRule>()
-                .Select(rule => (SecurityIdentifier)rule.IdentityReference).ToHashSet();
-            sids.Should().BeEquivalentTo(new[] { WindowsIdentity.GetCurrent().User!, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null) });
-
-            // Written again (a new connect): replaced, not appended.
-            ColituCslRules.WriteCredentialFile(path, Credential);
-            File.ReadAllText(path).Should().Be(Credential);
-
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(path, Credential);
             ColituCslRules.DeleteCredentialFile(path).Should().BeTrue();
             File.Exists(path).Should().BeFalse();
             ColituCslRules.DeleteCredentialFile(path).Should().BeTrue();
@@ -403,7 +403,7 @@ public class ColituCslTests
         ColituCsl.CredentialPathOverride = Path.Combine(dir, "cred.txt");
         try
         {
-            var start = () => ColituCsl.Instance.Start(new ColituCslLaunch(41000, 9440, ColituCslRules.Carriers(Plan(false), false)), Credential, _ => { });
+            var start = () => ColituCsl.Instance.Start(new ColituCslLaunch(41000, 9440, ColituCslRules.Carriers(Plan(false), false), "cu", "cp-0123456789abcdef"), Credential, _ => { });
             start.Should().Throw<Exception>();
             File.Exists(ColituCsl.CredentialPathOverride).Should().BeFalse();
         }

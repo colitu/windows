@@ -42,14 +42,14 @@ public class ColituCslLabTests
             [
                 new(ColituCslRules.PrimaryLabel, new ColituVerifyInbound(int.Parse(Env("COLITU_CSL_LAB_FWD_A")!), "u", "p"), "tcp"),
                 new(ColituCslRules.SpareLabel, new ColituVerifyInbound(int.Parse(Env("COLITU_CSL_LAB_FWD_B")!), "u", "p"), "tcp")
-            ], LabDirectTcp: true);
-            output.Add("args: " + string.Join(" ", ColituCslRules.Arguments(launch, ColituCsl.CredentialPathOverride)));
+            ], "", "", LabDirectTcp: true);
+            output.Add("args: " + string.Join(" ", ColituCslRules.Arguments(launch)));
             var watch = Stopwatch.StartNew();
             var run = ColituCsl.Instance.Start(launch, Credential, line => { lock (output) output.Add(line); });
             var verdict = await run.Ready.WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken);
             output.Add($"verdict: '{verdict}' after {watch.ElapsedMilliseconds} ms (pid {run.ProcessId})");
             verdict.Should().Be("");
-            File.Exists(ColituCsl.CredentialPathOverride).Should().BeTrue();
+            File.Exists(ColituCsl.CredentialPathOverride).Should().BeFalse("the credential goes over stdin, never to a file");
 
             var bench = Process.Start(new ProcessStartInfo(Env("COLITU_CSL_LAB_BENCH")!)
             {
@@ -104,7 +104,7 @@ public class ColituCslLabTests
         try
         {
             // The port accepts and never answers the handshake.
-            var launch = new ColituCslLaunch(FreePort(), 9440, [new(ColituCslRules.PrimaryLabel, new ColituVerifyInbound(int.Parse(Env("COLITU_CSL_LAB_SILENT")!), "u", "p"), "tcp")], LabDirectTcp: true);
+            var launch = new ColituCslLaunch(FreePort(), 9440, [new(ColituCslRules.PrimaryLabel, new ColituVerifyInbound(int.Parse(Env("COLITU_CSL_LAB_SILENT")!), "u", "p"), "tcp")], "", "", LabDirectTcp: true);
             var watch = Stopwatch.StartNew();
             var run = ColituCsl.Instance.Start(launch, Credential, line => { lock (output) output.Add(line); });
             var verdict = await run.Ready.WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
@@ -139,7 +139,7 @@ public class ColituCslLabTests
         try
         {
             // Nothing listens on these ports.
-            var launch = new ColituCslLaunch(FreePort(), 9440, [new(ColituCslRules.PrimaryLabel, new ColituVerifyInbound(FreePort(), "u", "p"), "tcp")], LabDirectTcp: true);
+            var launch = new ColituCslLaunch(FreePort(), 9440, [new(ColituCslRules.PrimaryLabel, new ColituVerifyInbound(FreePort(), "u", "p"), "tcp")], "", "", LabDirectTcp: true);
             var watch = Stopwatch.StartNew();
             var run = ColituCsl.Instance.Start(launch, Credential, line => { lock (output) output.Add(line); });
             var verdict = await run.Ready.WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken);

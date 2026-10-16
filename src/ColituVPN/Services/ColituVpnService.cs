@@ -1302,9 +1302,12 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             return null;
         }
         var spare = _sparePlan is { NextServerId: null } plan && string.Equals(plan.PrimaryIndexId, profile.IndexId, StringComparison.Ordinal) ? plan : null;
-        return new ColituCslPlan(profile.IndexId, ColituWarmSpare.NewVerifyInbound().Port, _cslConfig!.Port,
+        // csl-client's own SOCKS port gets a per-run account too: only the core may use it.
+        var socks = ColituWarmSpare.NewVerifyInbound();
+        return new ColituCslPlan(profile.IndexId, socks.Port, _cslConfig!.Port,
             ColituWarmSpare.NewVerifyInbound(), ColituCslRules.FamilyOf(profile.ConfigType),
-            spare != null ? ColituWarmSpare.NewVerifyInbound() : null, spare != null ? ColituCslRules.FamilyOf(spare.Spare.ConfigType) : null);
+            spare != null ? ColituWarmSpare.NewVerifyInbound() : null, spare != null ? ColituCslRules.FamilyOf(spare.Spare.ConfigType) : null,
+            socks.User, socks.Password);
     }
 
     /// <summary>The CSL stage of <see cref="PostProcessConfig"/>: the main core's config only; without a plan the config is returned as it is.</summary>
@@ -1341,7 +1344,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         }
         try
         {
-            var launch = new ColituCslLaunch(plan.SocksPort, plan.ServerPort, ColituCslRules.Carriers(plan, applied.SpareAttached));
+            var launch = new ColituCslLaunch(plan.SocksPort, plan.ServerPort, ColituCslRules.Carriers(plan, applied.SpareAttached), plan.SocksUser, plan.SocksPassword);
             _cslRun = ColituCsl.Instance.Start(launch, credential, LogConnection);
             return true;
         }

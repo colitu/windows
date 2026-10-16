@@ -83,10 +83,13 @@ internal static class ColituCslRules
         ? $"tcp://127.0.0.1:{carrier.Inbound.Port}#{carrier.Label}"
         : $"socks5://{Uri.EscapeDataString(carrier.Inbound.User)}:{Uri.EscapeDataString(carrier.Inbound.Password)}@127.0.0.1:{carrier.Inbound.Port}/127.0.0.1:{serverPort}?family={carrier.Family}#{carrier.Label}";
 
-    /// <summary>The csl-client command line (the credential only as a file path, never on the line).</summary>
-    public static List<string> Arguments(ColituCslLaunch launch, string credentialFile)
+    /// <summary>
+    /// The csl-client command line. Secrets never appear on it: the credential and the SOCKS
+    /// account go to its standard input (<see cref="Secrets"/>).
+    /// </summary>
+    public static List<string> Arguments(ColituCslLaunch launch)
     {
-        var args = new List<string> { "-socks", $"127.0.0.1:{launch.SocksPort}", "-credential-file", credentialFile };
+        var args = new List<string> { "-socks", $"127.0.0.1:{launch.SocksPort}", "-secrets-stdin" };
         foreach (var carrier in launch.Carriers)
         {
             args.Add("-carrier");
@@ -95,6 +98,17 @@ internal static class ColituCslRules
         args.Add("-v");
         return args;
     }
+
+    /// <summary>
+    /// The one JSON line csl-client reads from standard input: the node credential and the
+    /// per-run SOCKS account (another process on the PC cannot use the port without it).
+    /// </summary>
+    public static string Secrets(ColituCslLaunch launch, string credential) => new JsonObject
+    {
+        ["credential"] = credential,
+        ["socks_user"] = launch.SocksUser,
+        ["socks_password"] = launch.SocksPassword
+    }.ToJsonString() + "\n";
 
     /// <summary>The carriers a core config with CSL gives csl-client: the primary, and the spare when attached.</summary>
     public static List<ColituCslCarrier> Carriers(ColituCslPlan plan, bool spareAttached)
@@ -144,7 +158,12 @@ internal static class ColituCslRules
             ["protocol"] = "socks",
             ["settings"] = new JsonObject
             {
-                ["servers"] = new JsonArray(new JsonObject { ["address"] = "127.0.0.1", ["port"] = plan.SocksPort })
+                ["servers"] = new JsonArray(new JsonObject
+                {
+                    ["address"] = "127.0.0.1",
+                    ["port"] = plan.SocksPort,
+                    ["users"] = new JsonArray(new JsonObject { ["user"] = plan.SocksUser, ["pass"] = plan.SocksPassword })
+                })
             }
         });
         var routing = root["routing"] as JsonObject ?? new JsonObject();
@@ -202,7 +221,9 @@ internal static class ColituCslRules
             ["tag"] = OutboundTag,
             ["server"] = "127.0.0.1",
             ["server_port"] = plan.SocksPort,
-            ["version"] = "5"
+            ["version"] = "5",
+            ["username"] = plan.SocksUser,
+            ["password"] = plan.SocksPassword
         });
         var route = root["route"] as JsonObject ?? new JsonObject();
         root["route"] = route;
@@ -299,25 +320,6 @@ internal static class ColituCslRules
         _ => []
     };
 
-    /// <summary>
-    /// Writes the device's CSL credential to <paramref name="path"/>, readable by the current user
-    /// and SYSTEM only (no inherited access). Replaces an older file.
-    /// </summary>
-    public static void WriteCredentialFile(string path, string credential)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        DeleteCredentialFile(path);
-        var security = new FileSecurity();
-        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-        if (WindowsIdentity.GetCurrent().User is { } user)
-        {
-            security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.FullControl, AccessControlType.Allow));
-        }
-        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl, AccessControlType.Allow));
-        using var stream = new FileInfo(path).Create(FileMode.CreateNew, FileSystemRights.FullControl, FileShare.None, 4096, FileOptions.None, security);
-        stream.Write(Encoding.ASCII.GetBytes(credential));
-    }
-
     /// <summary>Deletes the credential file; true when none is left.</summary>
     public static bool DeleteCredentialFile(string path)
     {
@@ -357,14 +359,14 @@ public sealed class ColituCslConfig
 /// per-run account) to the primary and, when it runs on the same server, the warm spare.
 /// </summary>
 internal sealed record ColituCslPlan(string PrimaryIndexId, int SocksPort, int ServerPort, ColituVerifyInbound Primary, string PrimaryFamily,
-    ColituVerifyInbound? Spare, string? SpareFamily);
+    ColituVerifyInbound? Spare, string? SpareFamily, string SocksUser, string SocksPassword);
 
 /// <summary>A config with CSL in it, and whether the spare carrier is there too.</summary>
 internal sealed record ColituCslApplied(string Config, bool SpareAttached);
 
 internal sealed record ColituCslCarrier(string Label, ColituVerifyInbound Inbound, string Family);
 
-internal sealed record ColituCslLaunch(int SocksPort, int ServerPort, IReadOnlyList<ColituCslCarrier> Carriers, bool LabDirectTcp = false)
+internal sealed record ColituCslLaunch(int SocksPort, int ServerPort, IReadOnlyList<ColituCslCarrier> Carriers, string SocksUser, string SocksPassword, bool LabDirectTcp = false)
 {
     public string Describe() => string.Join(", ", Carriers.Select(item => $"{item.Label}/{item.Family}"));
 }
@@ -382,7 +384,7 @@ internal sealed class ColituCsl
     /// <summary>Tests only: another csl-client binary.</summary>
     internal static string? PathOverride { get; set; }
 
-    /// <summary>In the app's per-user config folder; deleted whenever csl-client stops.</summary>
+    /// <summary>Where versions before the stdin hand-over kept the credential; deleted whenever csl-client starts or stops.</summary>
     internal static string CredentialPath => CredentialPathOverride ?? ColituHardening.UserConfigPath("colitu-csl-credential.txt");
 
     /// <summary>Tests only.</summary>
@@ -417,25 +419,27 @@ internal sealed class ColituCsl
     }
 
     /// <summary>
-    /// Writes the credential file and starts csl-client. Never waits: <see cref="ColituCslRun.Ready"/>
+    /// Starts csl-client and hands it the credential and SOCKS account on standard input (no file).
+    /// Never waits: <see cref="ColituCslRun.Ready"/>
     /// tells when it has a carrier, exited, or missed <see cref="ColituCslRules.CarrierDeadline"/>
-    /// (it is then stopped). Throws when the file or the process cannot be created.
+    /// (it is then stopped). Throws when the process cannot be created.
     /// </summary>
     public ColituCslRun Start(ColituCslLaunch launch, string credential, Action<string> log)
     {
         Stop();
         var credentialPath = CredentialPath;
-        ColituCslRules.WriteCredentialFile(credentialPath, credential);
+        ColituCslRules.DeleteCredentialFile(credentialPath);
         var info = new ProcessStartInfo(ExecutablePath)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardInput = true,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             StandardErrorEncoding = new UTF8Encoding(false),
             WorkingDirectory = Path.GetDirectoryName(ExecutablePath)!
         };
-        foreach (var arg in ColituCslRules.Arguments(launch, credentialPath))
+        foreach (var arg in ColituCslRules.Arguments(launch))
         {
             info.ArgumentList.Add(arg);
         }
@@ -494,8 +498,17 @@ internal sealed class ColituCsl
             }
             catch
             {
-                ColituCslRules.DeleteCredentialFile(credentialPath);
                 process.Dispose();
+                throw;
+            }
+            try
+            {
+                process.StandardInput.Write(ColituCslRules.Secrets(launch, credential));
+                process.StandardInput.Close();
+            }
+            catch
+            {
+                Kill(process);
                 throw;
             }
             _process = process;
