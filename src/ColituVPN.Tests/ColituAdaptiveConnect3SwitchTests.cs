@@ -14,10 +14,31 @@ public class ColituAdaptiveConnect3SwitchTests
     [Fact]
     public void ThisRelease_ShipsWithAdaptiveConnect3Off()
     {
+        // Off until the panel turns it on for the device (no test here sets the remote switch).
+        ColituAdaptiveConnect3.BuildForced.Should().BeFalse();
         ColituAdaptiveConnect3.Enabled.Should().BeFalse();
         ColituAdaptiveConnect3.HintedStartActive(marksIgnored: false).Should().BeFalse();
         ColituAdaptiveConnect3.RecoveryFetchAllowed().Should().BeFalse();
         ColituAdaptiveConnect3.ShouldUseRecovery(automatic: true, apiUnreachableOnEveryBase: true, cacheUsable: false).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    public void Enabled_ByTheBuildOrThePanel(bool buildForced, bool remote, bool expected) =>
+        ColituAdaptiveConnect3.EnabledFor(buildForced, remote).Should().Be(expected);
+
+    [Theory]
+    [InlineData("""{"adaptive_connect_3":true}""", true)]
+    [InlineData("""{"adaptive_connect_3":false,"other":true}""", false)]
+    [InlineData("""{"adaptive_connect_3":"yes"}""", null)]
+    [InlineData("""{"other":true}""", null)]
+    public void Feature_ParsedFromTheServerList(string json, bool? expected)
+    {
+        var features = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(json);
+        ColituAdaptiveConnect3.ParseFeature(features).Should().Be(expected);
+        ColituAdaptiveConnect3.ParseFeature(null).Should().BeNull();
     }
 
     [Theory]
