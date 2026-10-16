@@ -409,3 +409,6 @@ bin/
 obj/
 *.exe
 *.msi
+
+# Adaptive Connect engine sidecar (built in the colitu-csl repo: engine/build.sh)
+engine-dosyalari/

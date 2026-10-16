@@ -162,6 +162,14 @@ Assert-FileExists (Join-Path $binXrayDir "geoip.dat") "Published bin\xray\geoip.
 Assert-FileExists (Join-Path $binXrayDir "geosite.dat") "Published bin\xray\geosite.dat"
 Assert-FileExists (Join-Path $binXrayDir "wintun.dll") "Published bin\xray\wintun.dll"
 
+# The Adaptive Connect decision engine (Go sidecar, colitu-csl repo: `sh engine/build.sh`, then
+# copy dist/windows-<arch>/colitu-engine.exe to engine-dosyalari\<runtime>\). Shadow mode: the
+# app logs where the engine would decide otherwise; nothing depends on it yet.
+$engineSourceDir = Join-Path $repoRoot "engine-dosyalari\$Runtime"
+$binEngineDir = Join-Path $publishDir "bin\colitu-engine"
+New-Item -ItemType Directory -Force -Path $binEngineDir | Out-Null
+Copy-Listed $engineSourceDir @("colitu-engine.exe") $binEngineDir
+
 $binSingboxDir = Join-Path $publishDir "bin\sing_box"
 New-Item -ItemType Directory -Force -Path $binSingboxDir | Out-Null
 Copy-Listed $singboxSourceDir $singboxFiles $binSingboxDir
