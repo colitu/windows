@@ -527,7 +527,7 @@ public partial class ColituMainWindow
 
     private void PlanCta_Click(object sender, RoutedEventArgs e) => Navigate("plan");
 
-    private static string FormatDate(DateTimeOffset value) => value.ToLocalTime().ToString("d MMMM yyyy", Loc.I.Culture);
+    private static string FormatDate(DateTimeOffset value) => value.ToLocalTime().ToString(Loc.I.Language == "zh" ? "yyyy年M月d日" : "d MMMM yyyy", Loc.I.Culture);
 
     private static string FormatBytes(long bytes)
     {

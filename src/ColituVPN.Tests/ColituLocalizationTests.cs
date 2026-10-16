@@ -12,12 +12,12 @@ public class ColituLocalizationTests
     private static readonly Regex Placeholder = new(@"\{[a-z]+\}", RegexOptions.Compiled);
 
     [Fact]
-    public void EveryKey_HasRussianTurkishAndEnglishText()
+    public void EveryKey_HasTextInEveryLanguage()
     {
         foreach (var key in Loc.Keys)
         {
             var values = Loc.ValuesOf(key);
-            values.Should().HaveCount(3, key);
+            values.Should().HaveCount(Loc.Languages.Length, key);
             values.Should().OnlyContain(value => !string.IsNullOrWhiteSpace(value), key);
         }
     }
@@ -91,8 +91,31 @@ public class ColituLocalizationTests
     [Fact]
     public void UnknownLanguage_FallsBackToADefault()
     {
-        Loc.Normalize("de").Should().BeOneOf("ru", "tr", "en");
+        Loc.Normalize("de").Should().BeOneOf("ru", "tr", "en", "zh", "fa");
+        Loc.Normalize(" ZH ").Should().Be("zh");
+        Loc.Normalize("fa").Should().Be("fa");
         Loc.Normalize(" TR ").Should().Be("tr");
+    }
+
+    [Fact]
+    public void Persian_IsRightToLeft_OthersAreNot()
+    {
+        var previous = Loc.I.Language;
+        try
+        {
+            Loc.I.SetLanguage("fa");
+            Loc.I.IsRightToLeft.Should().BeTrue();
+            Loc.I.FlowDirection.Should().Be(System.Windows.FlowDirection.RightToLeft);
+            Loc.I["nav.home"].Should().NotBeNullOrWhiteSpace();
+            Loc.I.Count("day", 3).Should().Be("3 روز");
+            Loc.I.SetLanguage("zh");
+            Loc.I.IsRightToLeft.Should().BeFalse();
+            Loc.I.Count("day", 3).Should().Be("3 天");
+        }
+        finally
+        {
+            Loc.I.SetLanguage(previous);
+        }
     }
 
     private static string FindAppSource()

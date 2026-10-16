@@ -571,6 +571,7 @@ public partial class ColituMainWindow
         var culture = Loc.I.Culture;
         CultureInfo.CurrentUICulture = culture;
         CultureInfo.DefaultThreadCurrentUICulture = culture;
+        FlowDirection = Loc.I.FlowDirection;
     }
 
     private void OnLanguageChanged()
@@ -578,6 +579,7 @@ public partial class ColituMainWindow
         var culture = Loc.I.Culture;
         CultureInfo.CurrentUICulture = culture;
         CultureInfo.DefaultThreadCurrentUICulture = culture;
+        FlowDirection = Loc.I.FlowDirection;
         BuildLanguageSelectors();
         VersionText.Text = Loc.I.Format("settings.version", ("version", ColituAuthService.ClientVersion));
         ApplyAuthMode();
@@ -611,7 +613,7 @@ public partial class ColituMainWindow
             {
                 var option = new RadioButton
                 {
-                    Content = language switch { "ru" => "Русский", "tr" => "Türkçe", _ => "English" },
+                    Content = language switch { "ru" => "Русский", "tr" => "Türkçe", "zh" => "中文", "fa" => "فارسی", _ => "English" },
                     GroupName = group,
                     Tag = language,
                     Style = (Style)FindResource("SegmentOption"),

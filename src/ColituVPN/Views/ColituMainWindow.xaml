@@ -295,11 +295,11 @@
                                 </Border>
 
                                 <TextBlock Margin="2,22,0,8" Style="{StaticResource FieldLabel}" Text="{s:T auth.email}" />
-                                <TextBox x:Name="EmailBox" MaxLength="254" KeyDown="AuthField_KeyDown" Style="{StaticResource Field}" Tag="{s:T auth.emailHint}" />
+                                <TextBox x:Name="EmailBox" FlowDirection="LeftToRight" MaxLength="254" KeyDown="AuthField_KeyDown" Style="{StaticResource Field}" Tag="{s:T auth.emailHint}" />
                                 <TextBlock x:Name="RegisterEmailHint" Margin="2,6,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="{s:T auth.registerEmailHint}" TextWrapping="Wrap" Visibility="Collapsed" />
 
                                 <TextBlock Margin="2,16,0,8" Style="{StaticResource FieldLabel}" Text="{s:T auth.password}" />
-                                <Grid>
+                                <Grid FlowDirection="LeftToRight">
                                     <PasswordBox x:Name="PasswordBox" MaxLength="256" KeyDown="AuthField_KeyDown" Style="{StaticResource PasswordField}" />
                                     <TextBox x:Name="PasswordPlainBox" MaxLength="256" KeyDown="AuthField_KeyDown" Padding="16,0,48,0" Style="{StaticResource Field}" Visibility="Collapsed" />
                                     <Button x:Name="ShowPasswordButton" Margin="0,0,8,0" HorizontalAlignment="Right" Click="ShowPassword_Click" Style="{StaticResource IconButton}" ToolTip="{s:T auth.show}">
@@ -309,11 +309,11 @@
 
                                 <StackPanel x:Name="RegisterFields" Visibility="Collapsed">
                                     <TextBlock Margin="2,16,0,8" Style="{StaticResource FieldLabel}" Text="{s:T auth.passwordRepeat}" />
-                                    <PasswordBox x:Name="PasswordRepeatBox" MaxLength="256" KeyDown="AuthField_KeyDown" Style="{StaticResource PasswordField}" />
+                                    <PasswordBox x:Name="PasswordRepeatBox" FlowDirection="LeftToRight" MaxLength="256" KeyDown="AuthField_KeyDown" Style="{StaticResource PasswordField}" />
                                     <Button x:Name="InviteToggleButton" Margin="0,14,0,0" HorizontalAlignment="Left" Click="InviteToggle_Click" Content="{s:T auth.invite.toggle}" Style="{StaticResource LinkButton}" />
                                     <StackPanel x:Name="InviteFields" Visibility="Collapsed">
                                         <TextBlock Margin="2,16,0,8" Style="{StaticResource FieldLabel}" Text="{s:T auth.invite.label}" />
-                                        <TextBox x:Name="InviteBox" MaxLength="200" KeyDown="AuthField_KeyDown" Style="{StaticResource Field}" Tag="{s:T auth.invite.hint}" />
+                                        <TextBox x:Name="InviteBox" FlowDirection="LeftToRight" MaxLength="200" KeyDown="AuthField_KeyDown" Style="{StaticResource Field}" Tag="{s:T auth.invite.hint}" />
                                     </StackPanel>
                                     <CheckBox x:Name="TermsCheck" Margin="2,18,0,0" Style="{StaticResource FieldCheck}">
                                         <TextBlock TextWrapping="Wrap">
@@ -359,15 +359,15 @@
                         <TextBlock Margin="0,24,0,0" Style="{StaticResource H1}" Text="{s:T reset.title}" />
                         <TextBlock x:Name="ResetSubtitle" Margin="0,10,0,0" Style="{StaticResource Muted}" TextWrapping="Wrap" />
                         <TextBlock Margin="2,24,0,8" Style="{StaticResource FieldLabel}" Text="{s:T auth.email}" />
-                        <TextBox x:Name="ResetEmailBox" MaxLength="254" KeyDown="ResetField_KeyDown" Style="{StaticResource Field}" Tag="{s:T auth.emailHint}" />
+                        <TextBox x:Name="ResetEmailBox" FlowDirection="LeftToRight" MaxLength="254" KeyDown="ResetField_KeyDown" Style="{StaticResource Field}" Tag="{s:T auth.emailHint}" />
                         <StackPanel x:Name="ResetCodeFields" Visibility="Collapsed">
                             <TextBlock Margin="2,16,0,8" Style="{StaticResource FieldLabel}" Text="{s:T verify.code}" />
-                            <TextBox x:Name="ResetCodeBox" Height="58" Padding="16,0" FontSize="24" FontWeight="SemiBold" InputMethod.IsInputMethodEnabled="False" DataObject.Pasting="VerifyCode_Pasting" KeyDown="ResetField_KeyDown" MaxLength="6" PreviewTextInput="VerifyCode_PreviewTextInput" Style="{StaticResource Field}" TextAlignment="Center" />
+                            <TextBox x:Name="ResetCodeBox" FlowDirection="LeftToRight" Height="58" Padding="16,0" FontSize="24" FontWeight="SemiBold" InputMethod.IsInputMethodEnabled="False" DataObject.Pasting="VerifyCode_Pasting" KeyDown="ResetField_KeyDown" MaxLength="6" PreviewTextInput="VerifyCode_PreviewTextInput" Style="{StaticResource Field}" TextAlignment="Center" />
                             <TextBlock Margin="2,16,0,8" Style="{StaticResource FieldLabel}" Text="{s:T reset.newPassword}" />
-                            <PasswordBox x:Name="ResetPasswordBox" MaxLength="256" KeyDown="ResetField_KeyDown" Style="{StaticResource PasswordField}" />
+                            <PasswordBox x:Name="ResetPasswordBox" FlowDirection="LeftToRight" MaxLength="256" KeyDown="ResetField_KeyDown" Style="{StaticResource PasswordField}" />
                             <TextBlock Margin="2,6,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="{s:T auth.passwordHint}" />
                             <TextBlock Margin="2,14,0,8" Style="{StaticResource FieldLabel}" Text="{s:T auth.passwordRepeat}" />
-                            <PasswordBox x:Name="ResetRepeatBox" MaxLength="256" KeyDown="ResetField_KeyDown" Style="{StaticResource PasswordField}" />
+                            <PasswordBox x:Name="ResetRepeatBox" FlowDirection="LeftToRight" MaxLength="256" KeyDown="ResetField_KeyDown" Style="{StaticResource PasswordField}" />
                         </StackPanel>
                         <Border x:Name="ResetInfoBox" Margin="0,16,0,0" Padding="14,10" Background="#149F8CFF" BorderBrush="#599F8CFF" BorderThickness="1" CornerRadius="16" Visibility="Collapsed">
                             <TextBlock x:Name="ResetInfoText" FontSize="13" Foreground="{StaticResource LilacBrush}" TextWrapping="Wrap" />
@@ -406,7 +406,7 @@
                     <TextBlock Margin="0,10,0,0" Style="{StaticResource H1}" Text="{s:T verify.title}" />
                     <TextBlock x:Name="VerifySubtitle" Margin="0,10,0,0" Style="{StaticResource Muted}" TextWrapping="Wrap" />
                     <TextBlock Margin="2,26,0,8" Style="{StaticResource FieldLabel}" Text="{s:T verify.code}" />
-                    <TextBox x:Name="VerifyCodeBox" Height="66" Padding="16,0" FontSize="30" FontWeight="SemiBold" InputMethod.IsInputMethodEnabled="False" DataObject.Pasting="VerifyCode_Pasting" KeyDown="VerifyCode_KeyDown" MaxLength="6" PreviewTextInput="VerifyCode_PreviewTextInput" TextChanged="VerifyCode_TextChanged" Style="{StaticResource Field}" TextAlignment="Center" />
+                    <TextBox x:Name="VerifyCodeBox" FlowDirection="LeftToRight" Height="66" Padding="16,0" FontSize="30" FontWeight="SemiBold" InputMethod.IsInputMethodEnabled="False" DataObject.Pasting="VerifyCode_Pasting" KeyDown="VerifyCode_KeyDown" MaxLength="6" PreviewTextInput="VerifyCode_PreviewTextInput" TextChanged="VerifyCode_TextChanged" Style="{StaticResource Field}" TextAlignment="Center" />
                     <Border x:Name="VerifyErrorBox" Margin="0,16,0,0" Padding="14,10" Background="#1AFF6B7A" BorderBrush="#59FF6B7A" BorderThickness="1" CornerRadius="16" Visibility="Collapsed">
                         <TextBlock x:Name="VerifyErrorText" FontSize="13" Foreground="#FFA3AE" TextWrapping="Wrap" />
                     </Border>
@@ -440,7 +440,7 @@
                     <TextBlock x:Name="MfaTitle" Margin="0,10,0,0" Style="{StaticResource H1}" Text="{s:T mfa.title}" />
                     <TextBlock x:Name="MfaSubtitle" Margin="0,10,0,0" Style="{StaticResource Muted}" TextWrapping="Wrap" />
                     <TextBlock x:Name="MfaCodeLabel" Margin="2,26,0,8" Style="{StaticResource FieldLabel}" />
-                    <TextBox x:Name="MfaCodeBox" Height="66" Padding="16,0" FontSize="30" FontWeight="SemiBold" InputMethod.IsInputMethodEnabled="False" DataObject.Pasting="MfaCode_Pasting" KeyDown="MfaCode_KeyDown" MaxLength="6" PreviewTextInput="MfaCode_PreviewTextInput" TextChanged="MfaCode_TextChanged" Style="{StaticResource Field}" TextAlignment="Center" />
+                    <TextBox x:Name="MfaCodeBox" FlowDirection="LeftToRight" Height="66" Padding="16,0" FontSize="30" FontWeight="SemiBold" InputMethod.IsInputMethodEnabled="False" DataObject.Pasting="MfaCode_Pasting" KeyDown="MfaCode_KeyDown" MaxLength="6" PreviewTextInput="MfaCode_PreviewTextInput" TextChanged="MfaCode_TextChanged" Style="{StaticResource Field}" TextAlignment="Center" />
                     <Border x:Name="MfaErrorBox" Margin="0,16,0,0" Padding="14,10" Background="#1AFF6B7A" BorderBrush="#59FF6B7A" BorderThickness="1" CornerRadius="16" Visibility="Collapsed">
                         <TextBlock x:Name="MfaErrorText" FontSize="13" Foreground="#FFA3AE" TextWrapping="Wrap" />
                     </Border>
@@ -481,7 +481,7 @@
                 </StackPanel>
 
                 <!-- Floating pill with the tabs; the active one is lavender (ColituNavBar). -->
-                <Border Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#F2141419" BorderBrush="{StaticResource LineStrongBrush}" BorderThickness="1" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource PillRadius}}" Padding="4">
+                <Border Grid.Column="1" FlowDirection="LeftToRight" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#F2141419" BorderBrush="{StaticResource LineStrongBrush}" BorderThickness="1" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource PillRadius}}" Padding="4">
                     <Grid>
                         <Border x:Name="NavThumb" HorizontalAlignment="Left" Background="{StaticResource ActionBrush}" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource PillRadius}}" Effect="{StaticResource ButtonGlow}">
                             <Border.RenderTransform>
@@ -1284,7 +1284,7 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBox x:Name="SplitDomainBox" MaxLength="253" KeyDown="SplitDomainBox_KeyDown" Style="{StaticResource Field}" Tag="{s:T split.domainHint}" />
+                                                <TextBox x:Name="SplitDomainBox" FlowDirection="LeftToRight" MaxLength="253" KeyDown="SplitDomainBox_KeyDown" Style="{StaticResource Field}" Tag="{s:T split.domainHint}" />
                                                 <Button Grid.Column="1" Height="44" Margin="10,0,0,0" Padding="16,0" Click="SplitAddDomain_Click" Style="{StaticResource SecondaryButton}">
                                                     <TextBlock FontSize="13" Text="{s:T split.add}" />
                                                 </Button>
@@ -1297,7 +1297,7 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBox x:Name="SplitNetworkBox" MaxLength="50" KeyDown="SplitNetworkBox_KeyDown" Style="{StaticResource Field}" Tag="{s:T split.ipHint}" />
+                                                <TextBox x:Name="SplitNetworkBox" FlowDirection="LeftToRight" MaxLength="50" KeyDown="SplitNetworkBox_KeyDown" Style="{StaticResource Field}" Tag="{s:T split.ipHint}" />
                                                 <Button Grid.Column="1" Height="44" Margin="10,0,0,0" Padding="16,0" Click="SplitAddNetwork_Click" Style="{StaticResource SecondaryButton}">
                                                     <TextBlock FontSize="13" Text="{s:T split.add}" />
                                                 </Button>

@@ -40,6 +40,6 @@ public class ColituServiceTagsTests
     [Fact]
     public void AdFreeYoutube_HasTextInEveryLanguage()
     {
-        Loc.ValuesOf("service.youtube_adfree").Should().Equal("YouTube без рекламы", "Reklamsız YouTube", "Ad-free YouTube");
+        Loc.ValuesOf("service.youtube_adfree").Should().Equal("YouTube без рекламы", "Reklamsız YouTube", "Ad-free YouTube", "无广告 YouTube", "یوتیوب بدون تبلیغ");
     }
 }

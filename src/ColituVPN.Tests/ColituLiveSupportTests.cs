@@ -110,7 +110,7 @@ public class ColituLiveSupportTests
     {
         foreach (var key in new[] { "bot.button", "bot.greeting", "bot.typing", "bot.helpful", "bot.human", "bot.handover", "bot.escalated" })
         {
-            Loc.ValuesOf(key).Should().HaveCount(3, key).And.OnlyContain(value => value.Length > 0);
+            Loc.ValuesOf(key).Should().HaveCount(Loc.Languages.Length, key).And.OnlyContain(value => value.Length > 0);
         }
         Loc.ValuesOf("bot.escalated").Should().OnlyContain(value => value.Contains("{ticket}"));
     }
@@ -157,6 +157,6 @@ public class ColituLiveSupportTabTests
     [Fact]
     public void LiveSupport_TabLabel_InEveryLanguage()
     {
-        AwesomeAssertions.AssertionExtensions.Should(v2rayN.Services.Loc.ValuesOf("nav.liveSupport")).Equal("Поддержка", "Canlı destek", "Live support");
+        AwesomeAssertions.AssertionExtensions.Should(v2rayN.Services.Loc.ValuesOf("nav.liveSupport")).Equal("Поддержка", "Canlı destek", "Live support", "真人客服", "پشتیبانی زنده");
     }
 }

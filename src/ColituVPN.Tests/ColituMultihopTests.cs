@@ -318,7 +318,7 @@ public class ColituMultihopTests
     {
         foreach (var key in new[] { "multihop.section", "multihop.ping", "multihop.home", "rotation.title", "rotation.off", "rotation.minutes", "rotation.home", "account.manualConfig" })
         {
-            Loc.ValuesOf(key).Should().HaveCount(3, key);
+            Loc.ValuesOf(key).Should().HaveCount(Loc.Languages.Length, key);
         }
         Loc.ValuesOf("multihop.ping")[2].Should().Be("Estimated · +1 hop");
     }
