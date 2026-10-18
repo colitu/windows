@@ -11,7 +11,13 @@ param(
     [string]$AdBlockDohPath = $(if ($env:COLITU_ADBLOCK_DOH_FILE) { $env:COLITU_ADBLOCK_DOH_FILE } else { Join-Path $PSScriptRoot "..\..\_gizli_anahtarlar\colitu-adblock-doh.txt" }),
     # Comma-separated https origins of the API mirrors (failover). Like the signing key they stay out
     # of the repository; the build embeds them (ColituMirrors assembly metadata).
-    [string]$MirrorsPath = $(if ($env:COLITU_MIRRORS_FILE) { $env:COLITU_MIRRORS_FILE } else { Join-Path $PSScriptRoot "..\..\_gizli_anahtarlar\colitu-mirrors.txt" })
+    [string]$MirrorsPath = $(if ($env:COLITU_MIRRORS_FILE) { $env:COLITU_MIRRORS_FILE } else { Join-Path $PSScriptRoot "..\..\_gizli_anahtarlar\colitu-mirrors.txt" }),
+    # Both lists go into one file next to ColituVPN.exe (colitu-build.json) rather than into the program,
+    # so the executables are reproducible from the public source. To rebuild a published release, pass
+    # the colitu-build.json of an installed copy here (instead of the two lists) together with -SkipManifest.
+    [string]$BuildValuesPath,
+    # Builds the installer only: no latest.json, so no update signing key is needed (reproduction checks).
+    [switch]$SkipManifest
 )
 
 $ErrorActionPreference = "Stop"
@@ -77,13 +83,28 @@ Assert-FileExists (Join-Path $xraySourceDir "geosite.dat") "geosite.dat"
 Assert-FileExists (Join-Path $singboxSourceDir "sing-box.exe") "sing-box.exe"
 # The cores run elevated: only the exact files pinned in scripts/cores.json go into a package.
 & (Join-Path $PSScriptRoot "fetch-cores.ps1") -Verify
-Assert-FileExists $SigningKeyPath "Update manifest signing key"
-Assert-FileExists $AdBlockDohPath "Ad-blocking DoH server list"
-$adBlockDoh = (Get-Content -LiteralPath $AdBlockDohPath -Raw).Trim()
-if (-not $adBlockDoh.StartsWith("https://")) { throw "The ad-blocking DoH server list is empty or invalid: $AdBlockDohPath" }
-Assert-FileExists $MirrorsPath "API mirror list"
-$mirrors = (Get-Content -LiteralPath $MirrorsPath -Raw).Trim()
-if (-not $mirrors.StartsWith("https://")) { throw "The API mirror list is empty or invalid: $MirrorsPath" }
+# Reproducible builds: the sources must have the line endings of every other checkout (LF, see
+# .gitattributes); a CRLF copy left by an editor would compile into different binaries.
+$crlfFiles = @(git -C $repoRoot ls-files --eol | Where-Object { $_ -match 'w/(crlf|mixed)' -and $_ -match 'eol=lf' } | ForEach-Object { ($_ -split "`t", 2)[1] })
+if ($crlfFiles.Count -gt 0) {
+    throw "These files have CRLF line endings, the repository uses LF (.gitattributes); convert them (or `git checkout -- <file>` when unchanged):`n  $($crlfFiles[0..([Math]::Min(19, $crlfFiles.Count - 1))] -join "`n  ")"
+}
+if (-not $SkipManifest) { Assert-FileExists $SigningKeyPath "Update manifest signing key" }
+if ($BuildValuesPath) {
+    Assert-FileExists $BuildValuesPath "colitu-build.json"
+    $buildValuesBytes = [System.IO.File]::ReadAllBytes((Resolve-Path $BuildValuesPath))
+}
+else {
+    Assert-FileExists $AdBlockDohPath "Ad-blocking DoH server list"
+    $adBlockDoh = (Get-Content -LiteralPath $AdBlockDohPath -Raw).Trim()
+    if (-not $adBlockDoh.StartsWith("https://")) { throw "The ad-blocking DoH server list is empty or invalid: $AdBlockDohPath" }
+    Assert-FileExists $MirrorsPath "API mirror list"
+    $mirrors = (Get-Content -LiteralPath $MirrorsPath -Raw).Trim()
+    if (-not $mirrors.StartsWith("https://")) { throw "The API mirror list is empty or invalid: $MirrorsPath" }
+    # Read by ColituBuildValues in the app. Fixed layout (UTF-8, no BOM, LF): the same lists give the same bytes.
+    $buildValuesText = '{"mirrors":' + (ConvertTo-Json $mirrors -Compress) + ',"adBlockDoh":' + (ConvertTo-Json $adBlockDoh -Compress) + "}`n"
+    $buildValuesBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($buildValuesText)
+}
 
 # Start from an empty folder: running the published app for a test leaves its database,
 # logs and session there, and the installer would ship them to every user.
@@ -95,9 +116,6 @@ New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
 
 if (-not $SkipPublish) {
     Write-Host "Publishing app..." -ForegroundColor Cyan
-    # Passed as an environment variable: on the command line MSBuild would split it at the commas.
-    $env:ColituAdBlockDoh = $adBlockDoh
-    $env:ColituMirrors = $mirrors
     & $dotnet publish $projectPath `
         --configuration $Configuration `
         --runtime $Runtime `
@@ -162,16 +180,16 @@ Assert-FileExists (Join-Path $binXrayDir "geoip.dat") "Published bin\xray\geoip.
 Assert-FileExists (Join-Path $binXrayDir "geosite.dat") "Published bin\xray\geosite.dat"
 Assert-FileExists (Join-Path $binXrayDir "wintun.dll") "Published bin\xray\wintun.dll"
 
-# The Adaptive Connect decision engine (Go sidecar, colitu-csl repo: `sh engine/build.sh`, then
-# copy dist/windows-<arch>/colitu-engine.exe to engine-dosyalari\<runtime>\). Shadow mode: the
+# The Adaptive Connect decision engine (Go sidecar from colitu/csl, built and pinned by
+# scripts/build-sidecars.ps1, checked above by fetch-cores.ps1 -Verify). Shadow mode: the
 # app logs where the engine would decide otherwise; nothing depends on it yet.
 $engineSourceDir = Join-Path $repoRoot "engine-dosyalari\$Runtime"
 $binEngineDir = Join-Path $publishDir "bin\colitu-engine"
 New-Item -ItemType Directory -Force -Path $binEngineDir | Out-Null
 Copy-Listed $engineSourceDir @("colitu-engine.exe") $binEngineDir
 
-# CSL alpha (Colitu Session Layer, colitu-csl repo cmd/csl-client): built with
-# `$env:CGO_ENABLED=0; go build -trimpath -ldflags "-s -w" -o <this repo>\csl-dosyalari\<runtime>\csl-client.exe ./cmd/csl-client`.
+# CSL alpha (Colitu Session Layer, colitu/csl cmd/csl-client): built and pinned by
+# scripts/build-sidecars.ps1 like the engine.
 # Opt-in in Advanced mode, used only when the server's settings carry "csl"; without the file the app connects as before.
 $cslSourceDir = Join-Path $repoRoot "csl-dosyalari\$Runtime"
 $binCslDir = Join-Path $publishDir "bin\colitu-csl"
@@ -192,6 +210,15 @@ Copy-Listed (Join-Path $repoRoot "srss-dosyalari") $ruleSetFiles $binSrsDir
 Assert-FileExists (Join-Path $binSrsDir "geosite-category-ru.srs") "Published bin\srss\geosite-category-ru.srs"
 Assert-FileExists (Join-Path $binSrsDir "geoip-ru.srs") "Published bin\srss\geoip-ru.srs"
 
+# The mirror and ad-blocking lists: the one file that is not built from the public source.
+[System.IO.File]::WriteAllBytes((Join-Path $publishDir "colitu-build.json"), $buildValuesBytes)
+
+# Reproducible installer: Inno Setup stores each file's modification time, so every file gets the
+# time of the commit being built instead of the time of this build.
+$sourceDate = [DateTimeOffset]::FromUnixTimeSeconds([long](git -C $repoRoot log -1 --format=%ct)).UtcDateTime
+Get-ChildItem -LiteralPath $publishDir -Recurse -Force | ForEach-Object { $_.LastWriteTimeUtc = $sourceDate }
+Write-Host "File times set to the commit time $($sourceDate.ToString('u'))"
+
 $iscc = Find-InnoCompiler
 Write-Host "Using Inno compiler: $iscc" -ForegroundColor Cyan
 
@@ -206,6 +233,13 @@ $installerPath = Join-Path $installerDir "ColituVPN-Setup-$Version-x64.exe"
 Assert-FileExists $installerPath "Installer"
 
 $hash = Get-FileHash $installerPath -Algorithm SHA256
+if ($SkipManifest) {
+    Write-Host ""
+    Write-Host "DONE (no update manifest)" -ForegroundColor Green
+    Write-Host "Installer: $installerPath"
+    Write-Host "SHA256: $($hash.Hash)"
+    return
+}
 
 # Release manifest read by the in-app updater from https://colitu.com/downloads/windows/latest.json.
 # Upload the installer and this file together to the website's downloads/windows/ folder.

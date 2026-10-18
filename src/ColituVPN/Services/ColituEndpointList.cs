@@ -24,14 +24,10 @@ public sealed class ColituEndpointList
     public const string KeyId = "e1";
 
     /// <summary>
-    /// Mirror origins (https), given by the build as the "ColituMirrors" assembly metadata (a
-    /// comma-separated list). They are not in the public source: release builds set the
-    /// ColituMirrors environment variable. Builds without them use only the main domain.
+    /// Mirror origins (https), from the release's colitu-build.json (<see cref="ColituBuildValues"/>).
+    /// They are not in the public source. Builds without them use only the main domain.
     /// </summary>
-    public static readonly IReadOnlyList<string> BuiltInMirrors = ParseMirrors(
-        typeof(ColituEndpointList).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
-            .OfType<System.Reflection.AssemblyMetadataAttribute>()
-            .FirstOrDefault(attribute => attribute.Key == "ColituMirrors")?.Value);
+    public static readonly IReadOnlyList<string> BuiltInMirrors = ParseMirrors(ColituBuildValues.Mirrors);
 
     /// <summary>API bases, in order, used when no list was accepted yet.</summary>
     public static readonly IReadOnlyList<string> BuiltInApi = BuildApi(BuiltInMirrors);

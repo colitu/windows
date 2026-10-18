@@ -42,6 +42,9 @@ SetupIconFile=..\src\ColituVPN\Resources\colitu.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
 SolidCompression=yes
+; Reproducible builds: file times are stored as UTC (build-installer.ps1 sets them to the commit time),
+; so the setup does not depend on the build machine's time zone.
+TimeStampsInUTC=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible

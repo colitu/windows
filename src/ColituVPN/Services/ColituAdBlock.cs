@@ -7,7 +7,7 @@ namespace v2rayN.Services;
 /// are not in the public source. The panel names them in the signed-in bootstrap
 /// (<c>/client/bootstrap</c>, <c>ad_block.doh</c>) and the app keeps the last non-empty answer, so
 /// they can change without a release. An empty list or no field (a panel that has no list
-/// configured yet) never turns ad blocking off: the kept list, else the one embedded by
+/// configured yet) never turns ad blocking off: the kept list, else the one shipped by
 /// scripts/build-installer.ps1, is used. No list at all: the switch is hidden.
 /// </summary>
 public static class ColituAdBlock
@@ -17,11 +17,8 @@ public static class ColituAdBlock
     private static string[]? _stored;
     private static bool _loaded;
 
-    /// <summary>The list scripts/build-installer.ps1 embedded (assembly metadata "ColituAdBlockDoh"): the fallback.</summary>
-    internal static readonly string[] Embedded = Parse(
-        typeof(ColituAdBlock).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
-            .OfType<System.Reflection.AssemblyMetadataAttribute>()
-            .FirstOrDefault(attribute => attribute.Key == "ColituAdBlockDoh")?.Value);
+    /// <summary>The list scripts/build-installer.ps1 ships in colitu-build.json (<see cref="ColituBuildValues"/>): the fallback.</summary>
+    internal static readonly string[] Embedded = Parse(ColituBuildValues.AdBlockDoh);
 
     /// <summary>The panel's last non-empty list, else the embedded list.</summary>
     public static string[] Servers

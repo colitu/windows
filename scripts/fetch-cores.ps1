@@ -57,6 +57,29 @@ function Test-PinnedCores {
     foreach ($folder in $manifest.files.PSObject.Properties) {
         foreach ($file in $folder.Value.PSObject.Properties) { $known["$($folder.Name)\$($file.Name)".ToLowerInvariant()] = $true }
     }
+    # Colitu's sidecars (built from colitu/csl by scripts/build-sidecars.ps1): pinned the same way,
+    # and nothing else in their runtime folders.
+    $sidecarDirs = @{}
+    foreach ($file in $manifest.sidecars.files.PSObject.Properties) {
+        $path = Join-Path $repoRoot $file.Name
+        if (-not (Test-Path -LiteralPath $path)) {
+            $bad += "$($file.Name): missing (run scripts/build-sidecars.ps1)"
+        }
+        elseif ((Get-Sha256 $path) -ne $file.Value.sha256) {
+            $bad += "$($file.Name): SHA-256 is not the one colitu/csl $($manifest.sidecars.commit.Substring(0, 7)) builds (run scripts/build-sidecars.ps1)"
+        }
+        $dir = Split-Path -Parent $path
+        if (-not $sidecarDirs.ContainsKey($dir)) { $sidecarDirs[$dir] = @() }
+        $sidecarDirs[$dir] += (Split-Path -Leaf $path).ToLowerInvariant()
+    }
+    foreach ($dir in $sidecarDirs.Keys) {
+        if (-not (Test-Path -LiteralPath $dir)) { continue }
+        foreach ($item in Get-ChildItem -LiteralPath $dir -Force) {
+            if ($sidecarDirs[$dir] -notcontains $item.Name.ToLowerInvariant()) {
+                $bad += "$([System.IO.Path]::GetRelativePath("$repoRoot",$item.FullName)): not listed in scripts/cores.json"
+            }
+        }
+    }
     $folders = @($manifest.cores | ForEach-Object { $_.folder }) + @($manifest.files.PSObject.Properties | ForEach-Object { $_.Name }) | Sort-Object -Unique
     foreach ($folder in $folders) {
         $dir = Join-Path $repoRoot $folder

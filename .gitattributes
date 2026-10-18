@@ -1,7 +1,13 @@
 ###############################################################################
 # Set default behavior to automatically normalize line endings.
 ###############################################################################
-* text=auto
+# Reproducible builds: every checkout (any core.autocrlf) gets the same bytes, so a rebuild
+# compiles exactly the sources of the release.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+# NuGet writes its lock files with CRLF on Windows; they do not go into the build.
+packages.lock.json text eol=crlf
 
 ###############################################################################
 # Set default behavior for command prompt diff.

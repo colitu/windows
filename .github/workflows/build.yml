@@ -22,7 +22,14 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
-          dotnet-version: '10.0.x'
+          # Exact SDK from global.json: its runtime pack ends up in the self-contained build.
+          global-json-file: global.json
+
+      - name: Rebuild the Go sidecars from source
+        # colitu-engine.exe and csl-client.exe must come out byte for byte from the colitu/csl
+        # commit and Go release pinned in scripts/cores.json (GOTOOLCHAIN fetches that exact Go).
+        shell: pwsh
+        run: ./scripts/build-sidecars.ps1
 
       - name: Restore
         working-directory: ./src

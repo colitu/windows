@@ -370,7 +370,9 @@ public sealed class ColituUpdateService
             exit 1
             """;
 
-        File.WriteAllText(scriptPath, scriptContent, new UTF8Encoding(false));
+        // CRLF whatever line endings the source was checked out with (reproducible builds), as
+        // Windows PowerShell scripts have always been written here.
+        File.WriteAllText(scriptPath, scriptContent.ReplaceLineEndings("\r\n"), new UTF8Encoding(false));
         try { File.Delete(logPath); } catch { }
 
         // By full path: the app runs elevated, and a bare name is also looked up in the

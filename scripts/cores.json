@@ -39,5 +39,17 @@
     "LICENSE",
     "LICENSE-wintun.txt",
     "README.md"
-  ]
+  ],
+  "sidecars": {
+    "_doc": "Colitu's own Go sidecars, built from source: scripts/build-sidecars.ps1 clones this commit of the public colitu/csl repository, runs its build scripts (engine/build.sh, cmd/csl-client/build.sh) with exactly this Go toolchain and puts the files in place only when every one has the SHA-256 below. Anyone can rebuild them byte for byte. -Verify (fetch-cores.ps1) checks them like the cores.",
+    "repo": "https://github.com/colitu/csl",
+    "commit": "6da38f5c302730f799969a58b2bbdc49d72b6b69",
+    "go": "go1.27.1",
+    "files": {
+      "engine-dosyalari/win-x64/colitu-engine.exe": { "dist": "engine/dist/windows-amd64/colitu-engine.exe", "sha256": "8efa4bad697a087febb66ebe11d2d9de2f80901c3c2404b48de3ee4869976e90" },
+      "engine-dosyalari/win-arm64/colitu-engine.exe": { "dist": "engine/dist/windows-arm64/colitu-engine.exe", "sha256": "b49b237d3d156fda46946d168d1b6c129c21a3e1514a4d35659bd0b6cb298b88" },
+      "csl-dosyalari/win-x64/csl-client.exe": { "dist": "cmd/csl-client/dist/win-x64/csl-client.exe", "sha256": "71fd168df56881712c0a25afcf0ef67e97168e5b92b8a6c6c89615fd7b999cfe" },
+      "csl-dosyalari/win-arm64/csl-client.exe": { "dist": "cmd/csl-client/dist/win-arm64/csl-client.exe", "sha256": "4b6c2fc03cab0dcaac73c1b6847a1c7bc61112d75bdcd96e2ce864a9b2c888af" }
+    }
+  }
 }

@@ -17,8 +17,24 @@
         <AssemblyTitle>Colitu VPN</AssemblyTitle>
         <Description>Colitu VPN Windows App</Description>
         <PackageLicenseExpression>GPL-3.0</PackageLicenseExpression>
-        <Copyright>Copyright © 2017-$([System.DateTime]::UtcNow.Year) 2dust and the v2rayN contributors; Copyright © $([System.DateTime]::UtcNow.Year) COLITU LIMITED</Copyright>
+        <!-- A fixed year, not the build clock: the same commit must give the same binaries
+             (reproducible builds). Move it forward in the first release of a new year. -->
+        <ColituCopyrightYear>2026</ColituCopyrightYear>
+        <Copyright>Copyright © 2017-$(ColituCopyrightYear) 2dust and the v2rayN contributors; Copyright © $(ColituCopyrightYear) COLITU LIMITED</Copyright>
         <InvariantGlobalization>false</InvariantGlobalization>
+    </PropertyGroup>
+
+    <!-- Reproducible builds: every resolved package (transitive ones too) and its content hash is
+         recorded in packages.lock.json. CI restores in locked mode and fails on any drift; after a
+         package change run `dotnet restore` (with the nuget.org source) and commit the lock files. -->
+    <PropertyGroup>
+        <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+        <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+        <!-- Restore must see the same inputs for build, test and `publish -r win-x64`, or the lock
+             files would not match: the runtime the installer ships, and the ILLink pack that
+             single-file publishing (Release) pulls in, for every configuration. -->
+        <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+        <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)' == 'Release'">
