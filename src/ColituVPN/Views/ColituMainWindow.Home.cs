@@ -455,6 +455,15 @@ public partial class ColituMainWindow
         AccountEmail.Text = email;
         AvatarText.Text = email.Length >= 2 ? email[..2].ToUpperInvariant() : "C";
         AccountId.Text = _auth.CurrentUser?.Id is { Length: > 0 } id ? $"ID · {id[..Math.Min(8, id.Length)]}" : "";
+        if (_auth.CurrentUser?.Company is { Name: { Length: > 0 } companyName })
+        {
+            AccountCompany.Text = loc.Format("account.company", ("name", companyName));
+            AccountCompany.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            AccountCompany.Visibility = Visibility.Collapsed;
+        }
         AccountPlan.Text = active ? PlanTitle(subscription!) : loc["plan.none"];
         SetBadge(AccountPlanBadge, AccountPlanBadgeText, status);
         AccountUntil.Text = free ? loc["plan.freeHint"] : ExpiresAt(subscription) is { } until ? FormatDate(until) : "—";

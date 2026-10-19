@@ -677,7 +677,8 @@ public sealed class ColituAuthService
             Email = me.Email,
             Name = DisplayNameFromEmail(me.Email),
             EmailVerified = true,
-            DeviceLimit = subscription.DeviceLimit
+            DeviceLimit = subscription.DeviceLimit,
+            Company = me.Company is { Name: { Length: > 0 } } ? me.Company : null
         };
         CurrentSubscription = subscription;
         _session.CachedUser = CurrentUser;
@@ -1476,6 +1477,15 @@ public sealed class ColituUser
     public string? Phone { get; set; }
     public bool EmailVerified { get; set; } = true;
     public int DeviceLimit { get; set; } = 1;
+    /// <summary>Company seat of the account (null when the account has none).</summary>
+    public ColituCompany? Company { get; set; }
+}
+
+/// <summary>Company seat from GET /me: name and role ("owner", "admin" or "member").</summary>
+public sealed class ColituCompany
+{
+    [JsonPropertyName("name")] public string? Name { get; set; }
+    [JsonPropertyName("role")] public string? Role { get; set; }
 }
 
 public sealed class ColituSubscription
@@ -1598,6 +1608,7 @@ internal sealed class ColituMeDto
     [JsonPropertyName("id")] public string? Id { get; set; }
     [JsonPropertyName("email")] public string? Email { get; set; }
     [JsonPropertyName("status")] public string? Status { get; set; }
+    [JsonPropertyName("company")] public ColituCompany? Company { get; set; }
 }
 
 internal sealed class ColituDeviceDto

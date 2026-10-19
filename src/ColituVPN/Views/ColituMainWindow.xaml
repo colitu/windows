@@ -902,6 +902,7 @@
                                             <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
                                                 <TextBlock x:Name="AccountEmail" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock x:Name="AccountId" Margin="0,3,0,0" Style="{StaticResource Small}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock x:Name="AccountCompany" Margin="0,3,0,0" Style="{StaticResource Small}" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
                                             </StackPanel>
                                         </Grid>
                                         <Border Height="1" Margin="0,22,0,0" Background="{StaticResource LineBrush}" />

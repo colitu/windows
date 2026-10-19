@@ -584,6 +584,7 @@ public sealed class Loc : INotifyPropertyChanged
         ["account.paused"] = ["ПРИОСТАНОВЛЕНО", "DURAKLATILDI", "PAUSED", "已暂停", "متوقف‌شده"],
         ["account.activate"] = ["Активировать", "Etkinleştir", "Activate", "启用", "فعال‌سازی"],
         ["account.activated"] = ["Устройство «{name}» снова активно.", "“{name}” yeniden aktif.", "“{name}” is active again.", "“{name}”已重新启用。", "«{name}» دوباره فعال شد."],
+        ["account.company"] = ["Компания: {name}", "Şirket: {name}", "Company: {name}", "公司：{name}", "شرکت: {name}"],
         ["account.security"] = ["Двухфакторная защита", "İki adımlı doğrulama", "Two-factor authentication", "两步验证", "تأیید دومرحله‌ای"],
         ["trial.dismiss"] = ["Скрыть до завтра", "Yarına kadar gizle", "Hide until tomorrow", "明天前不再显示", "پنهان تا فردا"],
         ["trial.keep"] = ["Сохранить безлимит", "Sınırsızı koru", "Keep unlimited", "保留不限流量", "حفظ نامحدود"],
