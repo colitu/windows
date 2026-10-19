@@ -230,6 +230,27 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         SaveState();
     }
 
+    /// <summary>Remembers that a tunnel came up on this install (the home invite card may show from now on). Never reset.</summary>
+    public void SetInviteCardEligible()
+    {
+        if (Preferences.InviteCardEligible)
+        {
+            return;
+        }
+        _session = _session with { Preferences = _session.Preferences with { InviteCardEligible = true } };
+        SaveState();
+    }
+
+    /// <summary>The user closed the home invite card: hide it for ColituReferral.CardDismissDays days.</summary>
+    public void DismissInviteCard(DateTimeOffset at)
+    {
+        _session = _session with
+        {
+            Preferences = _session.Preferences with { InviteCardDismissedAt = at.UtcDateTime.ToString("o", System.Globalization.CultureInfo.InvariantCulture) }
+        };
+        SaveState();
+    }
+
     /// <summary>
     /// Switches between Simple and Advanced mode: only what the screens show changes (no reconnect).
     /// Going Simple with a multihop route picked, the next connect uses the automatic choice; a live
@@ -5650,7 +5671,11 @@ public sealed record ColituVpnPreferences(
     // Order of the Locations list: name (the order before 2.9), ping or load (ColituLocationSort).
     string LocationSort = ColituLocationSort.Name,
     // CSL alpha (Advanced mode): open TCP connections survive a carrier change; only on servers whose settings carry "csl".
-    bool CslAlphaEnabled = false)
+    bool CslAlphaEnabled = false,
+    // Growth cards: set the first time the app saw a connected tunnel (never reset); the home invite card needs it.
+    bool InviteCardEligible = false,
+    // ISO-8601 UTC time the home invite card was closed; it stays hidden for ColituReferral.CardDismissDays.
+    string? InviteCardDismissedAt = null)
 {
     /// <summary>
     /// Preferences of a first run (no saved state yet): privacy mode on, Simple mode. The record

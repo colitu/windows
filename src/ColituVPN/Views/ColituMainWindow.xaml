@@ -746,6 +746,34 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Invite a friend: after the first successful connection; closable for 14 days (ColituMainWindow.Invite.cs). -->
+                            <Border x:Name="InviteCard" Margin="0,16,0,0" Padding="20,16,12,16" Cursor="Hand" MouseLeftButtonUp="InviteCard_Click" Style="{StaticResource Panel}" Visibility="Collapsed">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Text="{s:T invite.entry}" />
+                                            <TextBlock x:Name="InviteCardBody" Margin="0,4,0,0" FontSize="13" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Margin="8,-4,0,0" VerticalAlignment="Top" Click="InviteCardClose_Click" Content="✕" AutomationProperties.Name="{s:T notice.close}" ToolTip="{s:T notice.close}" Style="{StaticResource LinkButton}" />
+                                    </Grid>
+                                    <WrapPanel Margin="0,12,8,0">
+                                        <Button Height="36" Margin="0,0,8,0" Padding="14,0" Click="InviteTelegram_Click" Style="{StaticResource SecondaryButton}">
+                                            <TextBlock FontSize="13" Text="{s:T invite.telegram}" />
+                                        </Button>
+                                        <Button Height="36" Margin="0,0,8,0" Padding="14,0" Click="InviteWhatsApp_Click" Style="{StaticResource SecondaryButton}">
+                                            <TextBlock FontSize="13" Text="{s:T invite.whatsapp}" />
+                                        </Button>
+                                        <Button Height="36" Padding="14,0" Click="InviteShare_Click" Style="{StaticResource SecondaryButton}">
+                                            <TextBlock FontSize="13" Text="{s:T invite.share}" />
+                                        </Button>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+
                             <!-- Quick settings (Advanced mode) -->
                             <Border x:Name="QuickSettingsCard" Margin="0,16,0,0" Style="{StaticResource Panel}" Padding="20,18,20,12">
                                 <StackPanel>
@@ -936,6 +964,12 @@
                                                 <TextBlock FontSize="13.5" Text="{s:T account.signOut}" />
                                             </Button>
                                         </WrapPanel>
+                                        <Button Margin="0,2,0,0" Padding="18,10" HorizontalAlignment="Left" Click="Review_Click" Style="{StaticResource SecondaryButton}">
+                                            <StackPanel>
+                                                <TextBlock FontSize="13.5" Text="{s:T account.review}" />
+                                                <TextBlock Margin="0,2,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="{s:T account.reviewHint}" />
+                                            </StackPanel>
+                                        </Button>
                                     </StackPanel>
                                 </Border>
 
@@ -1042,6 +1076,14 @@
                                             <TextBlock FontSize="14" Text="{s:T invite.share}" />
                                         </Button>
                                     </Grid>
+                                    <WrapPanel Margin="0,12,0,0">
+                                        <Button Height="42" Margin="0,0,10,0" Padding="18,0" Click="InviteTelegram_Click" Style="{StaticResource SecondaryButton}">
+                                            <TextBlock FontSize="13.5" Text="{s:T invite.telegram}" />
+                                        </Button>
+                                        <Button Height="42" Padding="18,0" Click="InviteWhatsApp_Click" Style="{StaticResource SecondaryButton}">
+                                            <TextBlock FontSize="13.5" Text="{s:T invite.whatsapp}" />
+                                        </Button>
+                                    </WrapPanel>
                                     <TextBlock x:Name="InviteCodeLine" Margin="2,12,0,0" Style="{StaticResource Small}" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>

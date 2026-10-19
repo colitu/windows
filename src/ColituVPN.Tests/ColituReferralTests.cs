@@ -135,9 +135,9 @@ public class ColituReferralTests
         try
         {
             Loc.I.SetLanguage("tr");
-            ColituReferral.ShareText(info, Loc.I).Should().Be("Colitu'yu deniyorum; bu bağlantıyla hesap açarsan 7 gün Premium hediye. https://colitu.com/r/K7M2QX9A");
+            ColituReferral.ShareText(info, Loc.I).Should().Be("Colitu VPN kullanıyorum: hızlı ve gizlilik odaklı. Bu bağlantıyla hesap açarsan 7 gün Premium kazanırsın: https://colitu.com/r/K7M2QX9A");
             Loc.I.SetLanguage("en");
-            ColituReferral.ShareText(info, Loc.I).Should().EndWith(" https://colitu.com/r/K7M2QX9A").And.Contain("7 days");
+            ColituReferral.ShareText(info, Loc.I).Should().EndWith(": https://colitu.com/r/K7M2QX9A").And.Contain("7 days");
             Loc.I.SetLanguage("ru");
             ColituReferral.ShareText(info, Loc.I).Should().Contain("Colitu").And.EndWith("https://colitu.com/r/K7M2QX9A");
         }
@@ -145,5 +145,60 @@ public class ColituReferralTests
         {
             Loc.I.SetLanguage(previous);
         }
+    }
+
+    [Fact]
+    public void ShareUrls_TelegramGetsLinkAndTextApart_WhatsAppOneTextWithTheLink()
+    {
+        var info = ColituReferral.Parse(Sample)!;
+        var previous = Loc.I.Language;
+        try
+        {
+            Loc.I.SetLanguage("en");
+            var telegram = ColituReferral.TelegramUrl(info, Loc.I);
+            telegram.Should().StartWith("https://t.me/share/url?url=https%3A%2F%2Fcolitu.com%2Fr%2FK7M2QX9A&text=");
+            telegram.Substring(telegram.IndexOf("&text=", StringComparison.Ordinal)).Should().NotContain("colitu.com");
+            telegram.Should().Contain("7%20days");
+
+            var whatsapp = ColituReferral.WhatsAppUrl(info, Loc.I);
+            whatsapp.Should().StartWith("https://wa.me/?text=");
+            Uri.UnescapeDataString(whatsapp["https://wa.me/?text=".Length..]).Should().Be(ColituReferral.ShareText(info, Loc.I));
+        }
+        finally
+        {
+            Loc.I.SetLanguage(previous);
+        }
+    }
+
+    [Theory]
+    [InlineData("https://colitu.com/r/K7M2QX9A", true)]
+    [InlineData("https://www.colitu.com/r/K7M2QX9A", true)]
+    [InlineData("http://colitu.com/r/K7M2QX9A", false)]
+    [InlineData("https://evilcolitu.com/r/K7M2QX9A", false)]
+    [InlineData("https://colitu.com.evil.example/r/K7M2QX9A", false)]
+    [InlineData("", false)]
+    public void IsColituLink_AcceptsOnlyHttpsOnColitu(string link, bool expected) =>
+        ColituReferral.IsColituLink(link).Should().Be(expected);
+
+    [Fact]
+    public void ShouldShowCard_NeedsEligibilityAndRespectsPauseDisabledAndTheDismissWindow()
+    {
+        var now = new DateTimeOffset(2026, 10, 19, 12, 0, 0, TimeSpan.Zero);
+        var info = ColituReferral.Parse(Sample)!;
+
+        ColituReferral.ShouldShowCard(info, eligible: true, null, now, paused: false).Should().BeTrue();
+        ColituReferral.ShouldShowCard(info, eligible: false, null, now, paused: false).Should().BeFalse();
+        ColituReferral.ShouldShowCard(info, eligible: true, null, now, paused: true).Should().BeFalse();
+        ColituReferral.ShouldShowCard(null, eligible: true, null, now, paused: false).Should().BeFalse();
+
+        info.Enabled = false;
+        ColituReferral.ShouldShowCard(info, eligible: true, null, now, paused: false).Should().BeFalse();
+        info.Enabled = null;
+
+        ColituReferral.ShouldShowCard(info, true, now.AddDays(-13).ToString("o"), now, false).Should().BeFalse();
+        ColituReferral.ShouldShowCard(info, true, now.AddDays(-14).ToString("o"), now, false).Should().BeTrue();
+        // An unreadable stamp, or one far in the future (clock change), does not hide the card for good.
+        ColituReferral.ShouldShowCard(info, true, "garbage", now, false).Should().BeTrue();
+        ColituReferral.ShouldShowCard(info, true, now.AddDays(30).ToString("o"), now, false).Should().BeTrue();
     }
 }

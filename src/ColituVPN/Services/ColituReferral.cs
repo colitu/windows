@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -16,6 +17,8 @@ public sealed class ColituReferralRecent
 /// <summary>The account's invite card from <c>GET /api/v1/referral</c> (the <c>data</c> object).</summary>
 public sealed class ColituReferralInfo
 {
+    /// <summary>Absent in older panel responses (treated as on); false hides the home card.</summary>
+    [JsonPropertyName("enabled")] public bool? Enabled { get; set; }
     [JsonPropertyName("code")] public string Code { get; set; } = "";
     [JsonPropertyName("link")] public string Link { get; set; } = "";
     [JsonPropertyName("invitee_days")] public int InviteeDays { get; set; }
@@ -122,9 +125,45 @@ public static class ColituReferral
         return info.Link.Length == 0 ? null : info;
     }
 
+    /// <summary>The share sentence without the link ("... Premium kazanırsın:").</summary>
+    public static string ShareMessage(ColituReferralInfo info, Loc loc) =>
+        loc.Format("invite.shareText", ("days", info.InviteeDays));
+
     /// <summary>The ready-made share message: localized sentence, a blank space, the link.</summary>
     public static string ShareText(ColituReferralInfo info, Loc loc) =>
-        loc.Format("invite.shareText", ("days", info.InviteeDays)) + " " + info.Link;
+        ShareMessage(info, loc) + " " + info.Link;
+
+    /// <summary>Telegram's share page: the link and the sentence (without the link) as separate parameters.</summary>
+    public static string TelegramUrl(ColituReferralInfo info, Loc loc) =>
+        "https://t.me/share/url?url=" + Uri.EscapeDataString(info.Link) + "&text=" + Uri.EscapeDataString(ShareMessage(info, loc));
+
+    /// <summary>WhatsApp's share page: one text that already holds the link.</summary>
+    public static string WhatsAppUrl(ColituReferralInfo info, Loc loc) =>
+        "https://wa.me/?text=" + Uri.EscapeDataString(ShareText(info, loc));
+
+    /// <summary>The home card is hidden for this many days after the user closed it.</summary>
+    public const int CardDismissDays = 14;
+
+    /// <summary>True for an https link on colitu.com (or a subdomain): the only kind the home card offers to share.</summary>
+    public static bool IsColituLink(string? link) =>
+        Uri.TryCreate(link, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && (uri.Host.Equals("colitu.com", StringComparison.OrdinalIgnoreCase) || uri.Host.EndsWith(".colitu.com", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// The invite card on the home screen: only after a tunnel came up once on this install, with a usable
+    /// colitu.com link, not while the device is paused and not within 14 days of the user closing it.
+    /// </summary>
+    public static bool ShouldShowCard(ColituReferralInfo? info, bool eligible, string? dismissedAt, DateTimeOffset now, bool paused)
+    {
+        if (info == null || info.Enabled == false || !eligible || paused || !IsColituLink(info.Link))
+        {
+            return false;
+        }
+        return !DateTimeOffset.TryParse(dismissedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var closed)
+            || now - closed >= TimeSpan.FromDays(CardDismissDays)
+            || closed > now.AddMinutes(5);
+    }
 }
 
 /// <summary>Talks to the panel's invite endpoint.</summary>

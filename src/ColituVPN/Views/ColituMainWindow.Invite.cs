@@ -11,6 +11,8 @@ public partial class ColituMainWindow
 {
     private ColituReferralInfo? _invite;
     private bool _inviteLoading;
+    /// <summary>The home card asked for the invite once this session (a failed call is not repeated on every status change).</summary>
+    private bool _inviteCardTried;
 
     private void Invite_Click(object sender, RoutedEventArgs e) => Navigate("invite");
 
@@ -40,6 +42,7 @@ public partial class ColituMainWindow
             }
             _invite = info;
             ApplyInvite();
+            ApplyInviteCard();
         }
         catch (ColituApiException ex) when (ex.ErrorCode is "SIGNED_OUT")
         {
@@ -118,6 +121,65 @@ public partial class ColituMainWindow
         ShowCopyResult(CopyToClipboard(ColituReferral.ShareText(info, Loc.I)), "invite.shareCopied");
     }
 
+    private void InviteTelegram_Click(object sender, RoutedEventArgs e)
+    {
+        if (_invite is { } info)
+        {
+            OpenUrl(ColituReferral.TelegramUrl(info, Loc.I));
+        }
+    }
+
+    private void InviteWhatsApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (_invite is { } info)
+        {
+            OpenUrl(ColituReferral.WhatsAppUrl(info, Loc.I));
+        }
+    }
+
+    // ── Home card ──────────────────────────────────────────────────────────
+    /// <summary>
+    /// Shows the compact invite card on the home screen once a tunnel has come up on this install
+    /// (never before), and loads the invite data for it. Hidden while the device is paused and for
+    /// 14 days after the user closed it.
+    /// </summary>
+    private void ApplyInviteCard()
+    {
+        if (InviteCard == null)
+        {
+            return;
+        }
+        var prefs = _vpn.Preferences;
+        var paused = _auth.DevicePaused != null;
+        if (prefs.InviteCardEligible && _invite == null && !_inviteCardTried && _auth.HasSession && !paused)
+        {
+            _inviteCardTried = true;
+            _ = LoadInviteAsync();
+        }
+        var show = _auth.HasSession
+            && ColituReferral.ShouldShowCard(_invite, prefs.InviteCardEligible, prefs.InviteCardDismissedAt, DateTimeOffset.UtcNow, paused);
+        if (show && _invite is { } info)
+        {
+            InviteCardBody.Text = Loc.I.Format("invite.card.body", ("days", info.InviteeDays));
+        }
+        InviteCard.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void InviteCard_Click(object sender, MouseButtonEventArgs e) => Navigate("invite");
+
+    private void InviteCardClose_Click(object sender, RoutedEventArgs e)
+    {
+        InviteCard.Visibility = Visibility.Collapsed;
+        try
+        {
+            _vpn.DismissInviteCard(DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("ColituMainWindow.InviteCardClose_Click", ex);
+        }
+    }
+
     private void ShowCopyResult(bool copied, string successKey)
     {
         if (copied)
@@ -156,6 +218,8 @@ public partial class ColituMainWindow
     private void ClearInvite()
     {
         _invite = null;
+        _inviteCardTried = false;
+        InviteCard.Visibility = Visibility.Collapsed;
         InviteLinkBox.Clear();
         ShowInviteState(loading: true, error: false);
     }

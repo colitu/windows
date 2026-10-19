@@ -134,6 +134,20 @@ public partial class ColituMainWindow
         ApplyLocationCard();
         UpdateSessionTimer();
         ApplyHomeMode();
+
+        if (on && !_vpn.Preferences.InviteCardEligible)
+        {
+            // The first tunnel on this install: from now on the home screen may offer the invite card.
+            try
+            {
+                _vpn.SetInviteCardEligible();
+            }
+            catch (Exception ex)
+            {
+                Logging.SaveLog("ColituMainWindow.SetInviteCardEligible", ex);
+            }
+        }
+        ApplyInviteCard();
     }
 
     private void UpdateSessionTimer()
