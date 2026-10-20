@@ -17,7 +17,17 @@ param(
     # the colitu-build.json of an installed copy here (instead of the two lists) together with -SkipManifest.
     [string]$BuildValuesPath,
     # Builds the installer only: no latest.json, so no update signing key is needed (reproduction checks).
-    [switch]$SkipManifest
+    [switch]$SkipManifest,
+    # Authenticode-signs every .exe/.dll of the package, the setup and its uninstaller with Azure
+    # Artifact Signing (docs/code-signing.md); the Microsoft Store takes only signed installers.
+    # Signs in through DefaultAzureCredential (az login on this PC).
+    [switch]$CodeSign,
+    # signtool.exe from the Windows SDK (10.0.2261.755 or newer); default: the newest x64 one in Windows Kits.
+    [string]$SignToolPath = $env:COLITU_SIGNTOOL,
+    # Azure.CodeSigning.Dlib.dll (x64) from the Microsoft.ArtifactSigning.Client package.
+    [string]$SigningDlibPath = $env:COLITU_SIGNING_DLIB,
+    # metadata.json naming the Artifact Signing endpoint, account and certificate profile.
+    [string]$SigningMetadataPath = $(if ($env:COLITU_SIGNING_METADATA) { $env:COLITU_SIGNING_METADATA } else { Join-Path $PSScriptRoot "..\..\_gizli_anahtarlar\colitu-artifact-signing.json" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,6 +79,23 @@ function Assert-FileExists([string]$path, [string]$name) {
     }
 }
 
+# Artifact Signing certificates live three days, so every signature carries a timestamp.
+$signTimestampUrl = "http://timestamp.acs.microsoft.com"
+function Get-SignToolArguments {
+    @("/fd", "SHA256", "/tr", $signTimestampUrl, "/td", "SHA256", "/dlib", $SigningDlibPath, "/dmdf", $SigningMetadataPath)
+}
+
+function Invoke-CodeSign([string[]]$Files) {
+    if ($Files.Count -eq 0) { return }
+    & $SignToolPath sign @(Get-SignToolArguments) @Files
+    if ($LASTEXITCODE -ne 0) { throw "signtool failed ($LASTEXITCODE)" }
+}
+
+function Assert-Signed([string[]]$Files) {
+    $bad = @($Files | Where-Object { (Get-AuthenticodeSignature -LiteralPath $_).Status -ne 'Valid' })
+    if ($bad.Count -gt 0) { throw "Not validly signed:`n  $($bad -join "`n  ")" }
+}
+
 Write-Host "Colitu VPN installer build" -ForegroundColor Cyan
 Write-Host "Repo: $repoRoot"
 Write-Host "Version: $Version"
@@ -90,6 +117,15 @@ if ($crlfFiles.Count -gt 0) {
     throw "These files have CRLF line endings, the repository uses LF (.gitattributes); convert them (or `git checkout -- <file>` when unchanged):`n  $($crlfFiles[0..([Math]::Min(19, $crlfFiles.Count - 1))] -join "`n  ")"
 }
 if (-not $SkipManifest) { Assert-FileExists $SigningKeyPath "Update manifest signing key" }
+if ($CodeSign) {
+    if (-not $SignToolPath) {
+        $SignToolPath = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } | Select-Object -Last 1 -ExpandProperty FullName
+    }
+    Assert-FileExists $SignToolPath "signtool.exe (COLITU_SIGNTOOL)"
+    Assert-FileExists $SigningDlibPath "Azure.CodeSigning.Dlib.dll (COLITU_SIGNING_DLIB)"
+    Assert-FileExists $SigningMetadataPath "Artifact Signing metadata.json (COLITU_SIGNING_METADATA)"
+}
 if ($BuildValuesPath) {
     Assert-FileExists $BuildValuesPath "colitu-build.json"
     $buildValuesBytes = [System.IO.File]::ReadAllBytes((Resolve-Path $BuildValuesPath))
@@ -213,6 +249,15 @@ Assert-FileExists (Join-Path $binSrsDir "geoip-ru.srs") "Published bin\srss\geoi
 # The mirror and ad-blocking lists: the one file that is not built from the public source.
 [System.IO.File]::WriteAllBytes((Join-Path $publishDir "colitu-build.json"), $buildValuesBytes)
 
+if ($CodeSign) {
+    # Files that already carry a valid signature (wintun.dll by WireGuard LLC) keep it.
+    $peFiles = @(Get-ChildItem -LiteralPath $publishDir -Recurse -File -Include *.exe, *.dll | ForEach-Object FullName)
+    $unsigned = @($peFiles | Where-Object { (Get-AuthenticodeSignature -LiteralPath $_).Status -ne 'Valid' })
+    Write-Host "Signing $($unsigned.Count) of $($peFiles.Count) executables..." -ForegroundColor Cyan
+    Invoke-CodeSign $unsigned
+    Assert-Signed $peFiles
+}
+
 # Reproducible installer: Inno Setup stores each file's modification time, so every file gets the
 # time of the commit being built instead of the time of this build.
 $sourceDate = [DateTimeOffset]::FromUnixTimeSeconds([long](git -C $repoRoot log -1 --format=%ct)).UtcDateTime
@@ -227,10 +272,19 @@ $env:COLITU_PUBLISH_DIR = $publishDir
 $env:COLITU_OUTPUT_DIR = $installerDir
 
 Write-Host "Compiling installer..." -ForegroundColor Cyan
-& $iscc $issPath
+if ($CodeSign) {
+    # ISCC signs the setup and the uninstaller through the "colitusign" tool ($q = quote, $f = quoted file).
+    $signCommand = (@('$q' + $SignToolPath + '$q', "sign") + (Get-SignToolArguments | ForEach-Object { if ($_ -match ' ') { '$q' + $_ + '$q' } else { $_ } }) + '$f') -join ' '
+    & $iscc "/DColituSign" "/Scolitusign=$signCommand" $issPath
+}
+else {
+    & $iscc $issPath
+}
+if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
 
 $installerPath = Join-Path $installerDir "ColituVPN-Setup-$Version-x64.exe"
 Assert-FileExists $installerPath "Installer"
+if ($CodeSign) { Assert-Signed @($installerPath) }
 
 $hash = Get-FileHash $installerPath -Algorithm SHA256
 if ($SkipManifest) {

@@ -58,6 +58,12 @@ VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} Installer
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
+#ifdef ColituSign
+; build-installer.ps1 -CodeSign: ISCC signs the setup and the uninstaller with the "colitusign"
+; tool it defines (/S), so every executable the Microsoft Store checks carries a signature.
+SignTool=colitusign
+SignedUninstaller=yes
+#endif
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
