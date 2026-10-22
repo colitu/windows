@@ -624,7 +624,7 @@
                             <TextBlock x:Name="ConnectLabel" HorizontalAlignment="Center" FontSize="15" Foreground="{StaticResource MutedBrush}" />
                             <TextBlock x:Name="HomeTitle" Margin="0,16,0,0" HorizontalAlignment="Center" FontSize="22" Style="{StaticResource H2}" TextAlignment="Center" />
                             <TextBlock x:Name="HomeSubtitle" Margin="0,6,0,0" MaxWidth="500" HorizontalAlignment="Center" Style="{StaticResource Small}" FontSize="13.5" TextAlignment="Center" />
-                            <Border x:Name="ProtocolChip" Margin="0,14,0,0" HorizontalAlignment="Center" Style="{StaticResource Chip}" Visibility="Collapsed">
+                            <Border x:Name="ProtocolChip" Margin="0,14,0,0" HorizontalAlignment="Center" Style="{StaticResource Chip}" Visibility="Collapsed" Cursor="Hand" MouseLeftButtonUp="ProtocolChip_Click">
                                 <TextBlock x:Name="ProtocolChipText" Style="{StaticResource ChipText}" />
                             </Border>
                             <!-- Multihop: "Entry FI to Exit DE"; rotating IP: current exit and the countdown to the next change. -->

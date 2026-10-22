@@ -109,9 +109,12 @@ public partial class ColituMainWindow
             : _planRequired ? loc["plan.choose"]
             : loc["home.tap"];
         ConnectButton.ToolTip = on ? loc["home.disconnect"] : busy ? loc["home.cancel"] : loc["home.connect"];
-        var protocol = on ? _vpn.ConnectedProtocol : null;
-        ProtocolChip.Visibility = protocol is { Length: > 0 } && _vpn.AdvancedMode ? Visibility.Visible : Visibility.Collapsed;
-        ProtocolChipText.Text = protocol is { Length: > 0 } ? $"{loc["home.protocol"]} · {ColituTransportNames.Of(protocol, loc)}".ToUpper(loc.Culture) : "";
+        // Connected: the method in use. Otherwise the pick for the next connect (automatic when none).
+        var protocol = on && _vpn.ConnectedProtocol is { Length: > 0 } active ? active : _vpn.PreferredTransport;
+        var method = protocol.Length > 0 ? ColituTransportNames.Of(protocol, loc) : loc["transport.auto"];
+        ProtocolChip.Visibility = Visibility.Visible;
+        ProtocolChip.ToolTip = loc["home.protocol.hint"];
+        ProtocolChipText.Text = $"{loc["home.protocol"]} · {method} ▾".ToUpper(loc.Culture);
 
         StatusChipText.Text = on ? loc["status.protected"]
             : blocked ? loc["status.blocked"]
@@ -744,5 +747,48 @@ public partial class ColituMainWindow
     {
         RuDirectNotice.Visibility = Visibility.Collapsed;
         await SavePreferencesAsync(_vpn.Preferences with { PrivacyModeEnabled = true, RuDirectNoticeShown = true });
+    }
+    /// <summary>The protocol chip opens the connection method menu; a new pick reconnects a live tunnel.</summary>
+    private void ProtocolChip_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var loc = Loc.I;
+        var current = _vpn.PreferredTransport;
+        var menu = new ContextMenu { PlacementTarget = ProtocolChip, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        foreach (var method in new[] { "" }.Concat(ColituTransportChoice.Methods))
+        {
+            var item = new MenuItem
+            {
+                Header = method.Length == 0 ? loc["transport.auto"] : ColituTransportNames.Of(method, loc),
+                IsCheckable = true,
+                IsChecked = method == current
+            };
+            item.Click += async (_, _) => await PickTransportAsync(method);
+            menu.Items.Add(item);
+        }
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private async Task PickTransportAsync(string method)
+    {
+        if (method == _vpn.PreferredTransport)
+        {
+            return;
+        }
+        _vpn.SetPreferredTransport(method);
+        ApplyStatus();
+        if (_vpn.Status != ColituVpnStatus.Connected)
+        {
+            return;
+        }
+        try
+        {
+            await _vpn.ReconnectAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowToast(ex.Message, true);
+        }
+        ApplyStatus();
     }
 }

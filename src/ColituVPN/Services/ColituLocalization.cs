@@ -186,6 +186,8 @@ public sealed class Loc : INotifyPropertyChanged
         ["home.tapOff"] = ["Нажмите, чтобы отключить", "Kesmek için tıklayın", "Click to disconnect", "点击断开", "برای قطع اتصال کلیک کنید"],
         ["home.tapCancel"] = ["Нажмите, чтобы отменить", "İptal etmek için tıklayın", "Click to cancel", "点击取消", "برای لغو کلیک کنید"],
         ["home.protocol"] = ["Протокол", "Protokol", "Protocol", "协议", "پروتکل"],
+        ["home.protocol.hint"] = ["Нажмите, чтобы выбрать способ подключения", "Bağlantı yöntemini seçmek için tıklayın", "Click to choose the connection method", "点击选择连接方式", "برای انتخاب روش اتصال کلیک کنید"],
+        ["transport.auto"] = ["Автоматически", "Otomatik", "Automatic", "自动", "خودکار"],
         // Colitu names of the transports; the technical names stay out of the UI.
         ["transport.hysteria2"] = ["Быстрый", "Hızlı", "Fast", "极速", "سریع"],
         ["transport.vless-reality"] = ["Скрытный", "Gizli", "Stealth", "隐匿", "پنهان"],

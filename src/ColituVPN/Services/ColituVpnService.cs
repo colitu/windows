@@ -230,6 +230,21 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         SaveState();
     }
 
+    /// <summary>The connection method picked on the home screen ("" = automatic); the next connect tries it first.</summary>
+    public string PreferredTransport => Preferences.PreferredTransport;
+
+    public void SetPreferredTransport(string? protocol)
+    {
+        var normalized = ColituTransportChoice.Normalize(protocol);
+        if (normalized == Preferences.PreferredTransport)
+        {
+            return;
+        }
+        _session = _session with { Preferences = _session.Preferences with { PreferredTransport = normalized } };
+        SaveState();
+        LogConnection($"Connection method picked by the user: {(normalized.Length == 0 ? "automatic" : normalized)}");
+    }
+
     /// <summary>Remembers that a tunnel came up on this install (the home invite card may show from now on). Never reset.</summary>
     public void SetInviteCardEligible()
     {
@@ -4069,7 +4084,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         {
             LogConnection($"no memory of this network, starting with the hinted [{string.Join(", ", hinted.Select(item => item.Candidate.Protocol))}]");
             LogConnection($"Transport order: {string.Join(" > ", hinted.Select(item => item.Candidate.Protocol))} (hinted, no probe)");
-            return hinted;
+            return PreferPicked(hinted);
         }
         var latency = await MeasureTransportLatencyAsync(ordered);
         if (_marksIgnored)
@@ -4095,7 +4110,21 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 .ToList();
         }
         LogConnection($"Transport order: {string.Join(" > ", ordered.Select(item => $"{item.Candidate.Protocol}({LatencyText(latency, item.Candidate.Protocol)})"))}");
-        return ordered;
+        return PreferPicked(ordered);
+    }
+
+    /// <summary>The method picked on the home screen goes first; the automatic order stays behind it as fallback.</summary>
+    private List<(ColituConfigCandidate Candidate, ProfileItem Profile)> PreferPicked(List<(ColituConfigCandidate Candidate, ProfileItem Profile)> ordered)
+    {
+        var picked = Preferences.PreferredTransport;
+        var result = ColituTransportChoice.PutFirst(ordered, item => item.Candidate.Protocol, picked);
+        if (picked.Length > 0)
+        {
+            LogConnection(result.Count > 0 && string.Equals(result[0].Candidate.Protocol, picked, StringComparison.OrdinalIgnoreCase)
+                ? $"Connection method picked by the user goes first: {picked}"
+                : $"Connection method picked by the user ({picked}) is not offered here; automatic order");
+        }
+        return result;
     }
 
     private static string LatencyText(Dictionary<string, int> latency, string protocol)
@@ -5676,7 +5705,9 @@ public sealed record ColituVpnPreferences(
     // Growth cards: set the first time the app saw a connected tunnel (never reset); the home invite card needs it.
     bool InviteCardEligible = false,
     // ISO-8601 UTC time the home invite card was closed; it stays hidden for ColituReferral.CardDismissDays.
-    string? InviteCardDismissedAt = null)
+    string? InviteCardDismissedAt = null,
+    // The connection method the user picked on the home screen ("" = automatic): it is tried first, the others stay as fallback.
+    string PreferredTransport = "")
 {
     /// <summary>
     /// Preferences of a first run (no saved state yet): privacy mode on, Simple mode. The record
@@ -5702,7 +5733,8 @@ public sealed record ColituVpnPreferences(
             SplitTunnelMode = ColituSplitTunnelModes.Normalize(SplitTunnelMode),
             Language = language,
             ConnectionMode = connectionMode,
-            LocationSort = ColituLocationSort.Normalize(LocationSort)
+            LocationSort = ColituLocationSort.Normalize(LocationSort),
+            PreferredTransport = ColituTransportChoice.Normalize(PreferredTransport)
         };
     }
 
