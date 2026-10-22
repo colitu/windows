@@ -865,41 +865,107 @@
                             </Grid>
                         </Border>
 
-                        <!-- Nothing is bought in the app, as on iOS and Android: the subscription
-                             is managed in the customer account on app.colitu.com. -->
-                        <Border Margin="0,16,0,0" MaxWidth="720" HorizontalAlignment="Left" Padding="28" Style="{StaticResource Panel}">
-                            <StackPanel>
+                        <!-- Plans are bought in the app: Platega (roubles) and Kyren Pay (yuan),
+                             every method in every language. The provider page opens in the browser. -->
+                        <Grid x:Name="PricingLoading" Height="260" Visibility="Collapsed">
+                            <Ellipse Style="{StaticResource Spinner}" />
+                        </Grid>
+                        <StackPanel x:Name="PricingError" Margin="0,60,0,0" HorizontalAlignment="Center" Visibility="Collapsed">
+                            <TextBlock HorizontalAlignment="Center" Style="{StaticResource Muted}" Text="{s:T pricing.loadFailed}" />
+                            <Button Height="40" Margin="0,16,0,0" Padding="20,0" HorizontalAlignment="Center" Click="PricingRetry_Click" Style="{StaticResource SecondaryButton}">
+                                <TextBlock FontSize="13.5" Text="{s:T pricing.retry}" />
+                            </Button>
+                        </StackPanel>
+
+                        <Grid x:Name="PricingContent" Margin="0,16,0,0" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="330" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Padding="26" Style="{StaticResource Panel}">
+                                <StackPanel>
+                                    <Border HorizontalAlignment="Left" Style="{StaticResource SegmentHost}">
+                                        <StackPanel x:Name="DurationList" Orientation="Horizontal" />
+                                    </Border>
+
+                                    <TextBlock Margin="0,22,0,12" Style="{StaticResource Body}" FontWeight="Medium" Text="{s:T pricing.choosePlan}" />
+                                    <UniformGrid x:Name="TierList" Columns="3" />
+
+                                    <Border Height="1" Margin="0,14,0,0" Background="{StaticResource LineBrush}" />
+
+                                    <TextBlock Margin="0,18,0,12" Style="{StaticResource Body}" FontWeight="Medium" Text="{s:T pricing.method}" />
+                                    <UniformGrid x:Name="MethodList" Columns="2" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="2" VerticalAlignment="Top" Padding="24" Style="{StaticResource Panel}">
                                 <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid Width="48" Height="48" VerticalAlignment="Top">
-                                        <Ellipse Fill="{StaticResource IconWellBrush}" Stroke="{StaticResource LineStrongBrush}" />
-                                        <Path Width="22" Height="22" Data="{StaticResource IconShield}" Stretch="Uniform" Stroke="{StaticResource LilacBrush}" StrokeThickness="1.8" />
-                                    </Grid>
-                                    <StackPanel Grid.Column="1" Margin="16,2,0,0">
-                                        <TextBlock Style="{StaticResource H2}" Text="{s:T plan.manageTitle}" TextWrapping="Wrap" />
-                                        <TextBlock Margin="0,8,0,0" Style="{StaticResource Muted}" Text="{s:T plan.manageBody}" TextWrapping="Wrap" />
+                                    <StackPanel x:Name="SummaryPanel">
+                                        <TextBlock Style="{StaticResource Kicker}" Text="{s:T pricing.summary}" />
+                                        <TextBlock x:Name="SummaryTitle" Margin="0,10,0,0" Style="{StaticResource H2}" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="SummarySub" Margin="0,4,0,0" Style="{StaticResource Small}" TextWrapping="Wrap" />
+                                        <Grid Margin="0,18,0,0">
+                                            <TextBlock Style="{StaticResource Small}" Text="{s:T pricing.package}" />
+                                            <TextBlock x:Name="SummaryPackage" HorizontalAlignment="Right" FontSize="13" />
+                                        </Grid>
+                                        <Grid x:Name="SummaryFeeRow" Margin="0,10,0,0">
+                                            <TextBlock x:Name="SummaryFeeLabel" Style="{StaticResource Small}" />
+                                            <TextBlock x:Name="SummaryFee" HorizontalAlignment="Right" FontSize="13" />
+                                        </Grid>
+                                        <Border Height="1" Margin="0,16,0,0" Background="{StaticResource LineBrush}" />
+                                        <Grid Margin="0,14,0,0">
+                                            <TextBlock VerticalAlignment="Center" Style="{StaticResource Kicker}" Text="{s:T pricing.total}" />
+                                            <TextBlock x:Name="SummaryTotal" HorizontalAlignment="Right" FontSize="28" FontWeight="SemiBold" />
+                                        </Grid>
+                                        <Button x:Name="PayButton" Height="52" Margin="0,20,0,0" HorizontalAlignment="Stretch" Click="Pay_Click" IsEnabled="False" Style="{StaticResource PrimaryButton}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse x:Name="PaySpinner" Margin="0,0,10,0" Stroke="{StaticResource OnAccentBrush}" Style="{StaticResource Spinner}" Visibility="Collapsed" />
+                                                <TextBlock FontSize="14.5" Text="{s:T pricing.pay}" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Grid Margin="0,14,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Path Width="13" Height="13" Margin="0,2,8,0" VerticalAlignment="Top" Data="{StaticResource IconLock}" Stretch="Uniform" Stroke="{StaticResource DimBrush}" StrokeThickness="1.6" />
+                                            <TextBlock Grid.Column="1" FontSize="12" Foreground="{StaticResource DimBrush}" Text="{s:T pricing.secure}" TextWrapping="Wrap" />
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <StackPanel x:Name="PaymentPanel" Visibility="Collapsed">
+                                        <Grid Width="64" Height="64" Margin="0,6,0,0" HorizontalAlignment="Left">
+                                            <Ellipse Fill="{StaticResource IconWellBrush}" Stroke="{StaticResource LineStrongBrush}" />
+                                            <Ellipse x:Name="PaymentSpinner" Width="30" Height="30" Style="{StaticResource Spinner}" />
+                                            <Path x:Name="PaymentResultIcon" Width="26" Height="26" Stretch="Uniform" StrokeEndLineCap="Round" StrokeStartLineCap="Round" StrokeThickness="2.6" Visibility="Collapsed" />
+                                        </Grid>
+                                        <TextBlock x:Name="PaymentTitle" Margin="0,18,0,0" Style="{StaticResource H2}" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="PaymentHint" Margin="0,8,0,0" Style="{StaticResource Muted}" TextWrapping="Wrap" />
+                                        <Button x:Name="PaymentPrimary" Height="48" Margin="0,22,0,0" HorizontalAlignment="Stretch" Click="PaymentPrimary_Click" Style="{StaticResource PrimaryButton}">
+                                            <TextBlock x:Name="PaymentPrimaryText" FontSize="14.5" />
+                                        </Button>
+                                        <Button x:Name="PaymentSecondary" Height="44" Margin="0,10,0,0" HorizontalAlignment="Stretch" Click="PaymentSecondary_Click" Style="{StaticResource SecondaryButton}">
+                                            <TextBlock x:Name="PaymentSecondaryText" FontSize="14" />
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
-                                <StackPanel Margin="0,24,0,0" Orientation="Horizontal">
-                                    <Button MinWidth="240" Height="50" Padding="22,0" Click="ManagePlan_Click" Style="{StaticResource PrimaryButton}">
-                                        <TextBlock FontSize="14.5" Text="{s:T plan.manageButton}" />
-                                    </Button>
-                                    <Button x:Name="PlanRefreshButton" MinWidth="180" Height="50" Margin="12,0,0,0" Padding="22,0" Click="PlanRefresh_Click" Style="{StaticResource SecondaryButton}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <Ellipse x:Name="PlanRefreshSpinner" Margin="0,0,10,0" Style="{StaticResource Spinner}" Visibility="Collapsed" />
-                                            <TextBlock FontSize="14" Text="{s:T plan.refresh}" />
-                                        </StackPanel>
-                                    </Button>
+                            </Border>
+                        </Grid>
+
+                        <!-- The account on app.colitu.com stays reachable (devices, invoices). -->
+                        <WrapPanel Margin="0,16,0,0" VerticalAlignment="Center">
+                            <Button Height="40" Margin="0,0,10,8" Padding="18,0" Click="ManagePlan_Click" Style="{StaticResource SecondaryButton}">
+                                <TextBlock FontSize="13" Text="{s:T plan.manageButton}" />
+                            </Button>
+                            <Button x:Name="PlanRefreshButton" Height="40" Margin="0,0,10,8" Padding="18,0" Click="PlanRefresh_Click" Style="{StaticResource SecondaryButton}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="PlanRefreshSpinner" Margin="0,0,10,0" Style="{StaticResource Spinner}" Visibility="Collapsed" />
+                                    <TextBlock FontSize="13" Text="{s:T plan.refresh}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,16,0,0" Orientation="Horizontal">
-                                    <Path Width="13" Height="13" Margin="0,2,8,0" VerticalAlignment="Top" Data="{StaticResource IconLock}" Stretch="Uniform" Stroke="{StaticResource DimBrush}" StrokeThickness="1.6" />
-                                    <TextBlock MaxWidth="600" FontSize="12" Foreground="{StaticResource DimBrush}" Text="{s:T plan.refreshHint}" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
+                            </Button>
+                        </WrapPanel>
                     </StackPanel>
                 </ScrollViewer>
 

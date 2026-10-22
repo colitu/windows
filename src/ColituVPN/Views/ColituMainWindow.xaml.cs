@@ -455,6 +455,9 @@ public partial class ColituMainWindow
                 RenderServers();
                 _ = MeasurePingsAsync();
                 break;
+            case "plan":
+                _ = LoadPricingAsync();
+                break;
             case "account":
                 _ = LoadDevicesAsync();
                 break;

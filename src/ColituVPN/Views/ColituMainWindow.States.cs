@@ -369,7 +369,7 @@ public partial class ColituMainWindow
         }
     }
 
-    private void TrialKeep_Click(object sender, RoutedEventArgs e) => OpenUrl(ColituAuthService.PricingUrl);
+    private void TrialKeep_Click(object sender, RoutedEventArgs e) => Navigate("plan");
 
     // ── Proxy coverage and split-tunnel chips ──────────────────────────────
     private void ApplyProxyCoverageChip()

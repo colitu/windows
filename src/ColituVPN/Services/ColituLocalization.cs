@@ -259,8 +259,8 @@ public sealed class Loc : INotifyPropertyChanged
 
         // Pricing (same wording as colitu.com/pricing)
         ["pricing.kicker"] = ["ТАРИФЫ", "PAKETLER", "PLANS", "套餐", "طرح‌ها"],
-        ["pricing.title"] = ["Один тариф. Все серверы.", "Tek paket. Tüm sunucular.", "One plan. Every server.", "一个套餐，所有服务器。", "یک طرح، همهٔ سرورها."],
-        ["pricing.sub"] = ["Тариф покупается и продлевается в личном кабинете на colitu.com.", "Paket satın alma ve süre uzatma colitu.com hesabınızdan yapılır.", "Plans are bought and renewed in your account on colitu.com.", "套餐可在 colitu.com 的账户中购买和续订。", "طرح‌ها را در حساب خود در colitu.com بخرید و تمدید کنید."],
+        ["pricing.title"] = ["Все серверы в любом тарифе.", "Her pakette tüm sunucular.", "Every server on every plan.", "每个套餐都包含全部服务器。", "همهٔ سرورها در هر طرح."],
+        ["pricing.sub"] = ["Выберите тариф и оплатите прямо здесь: картой, СБП или криптовалютой в рублях либо через Alipay / WeChat Pay в юанях.", "Paketinizi seçin ve buradan ödeyin: ruble ile kart, SBP veya kripto; yuan ile Alipay / WeChat Pay.", "Pick a plan and pay right here: card, SBP or crypto in roubles, or Alipay / WeChat Pay in yuan.", "在这里选择套餐并直接付款：卢布可用银行卡、SBP 或加密货币，人民币可用支付宝 / 微信支付。", "طرح خود را انتخاب کنید و همین‌جا بپردازید: کارت، SBP یا رمزارز به روبل، یا Alipay / WeChat Pay به یوان."],
         ["plan.manageTitle"] = ["Подписка управляется на colitu.com", "Abonelik colitu.com üzerinden yönetilir", "Your subscription is managed on colitu.com", "你的订阅在 colitu.com 管理", "اشتراک شما در colitu.com مدیریت می‌شود"],
         ["plan.manageBody"] = ["Тариф, продление и устройства — в личном кабинете. Войдите с той же почтой, что и в приложении.", "Paket, süre uzatma ve cihazlar hesabınızdan yönetilir. Uygulamadaki e-posta adresinizle giriş yapın.", "Plans, renewals and devices are handled in your account. Sign in with the same e-mail as in the app.", "套餐、续订和设备都在你的账户中管理。请使用与应用中相同的邮箱登录。", "طرح‌ها، تمدیدها و دستگاه‌ها در حساب شما مدیریت می‌شوند. با همان ایمیلی که در برنامه استفاده کرده‌اید وارد شوید."],
         ["plan.manageButton"] = ["Открыть app.colitu.com", "app.colitu.com’u aç", "Open app.colitu.com", "打开 app.colitu.com", "باز کردن app.colitu.com"],
@@ -298,6 +298,21 @@ public sealed class Loc : INotifyPropertyChanged
         ["pay.failedHint"] = ["Деньги не списаны. Попробуйте ещё раз или выберите другой способ.", "Ücret alınmadı. Tekrar deneyin veya başka bir yöntem seçin.", "You were not charged. Try again or pick another method.", "你没有被扣款。请重试或选择其他付款方式。", "از شما پولی کسر نشد. دوباره تلاش کنید یا روش دیگری انتخاب کنید."],
         ["pay.back"] = ["Вернуться к тарифам", "Paketlere dön", "Back to plans", "返回套餐", "بازگشت به طرح‌ها"],
         ["pay.connect"] = ["Подключиться", "Bağlan", "Connect now", "立即连接", "همین حالا وصل شو"],
+        ["pricing.choosePlan"] = ["Выберите тариф", "Paketinizi seçin", "Choose your plan", "选择套餐", "طرح خود را انتخاب کنید"],
+        ["pricing.monthly"] = ["Помесячно", "Aylık", "Monthly", "按月", "ماهانه"],
+        ["pricing.yearly"] = ["На год", "Yıllık", "Yearly", "按年", "سالانه"],
+        ["pricing.perMonth"] = ["/ мес.", "/ ay", "/ month", "/ 月", "/ ماه"],
+        ["pricing.billedYearly"] = ["{amount} за год", "Yıllık {amount}", "{amount} billed yearly", "按年支付 {amount}", "{amount} به‌صورت سالانه"],
+        ["pricing.package"] = ["Тариф", "Paket", "Plan", "套餐", "طرح"],
+        ["tier.personal"] = ["Личный", "Kişisel", "Personal", "个人版", "شخصی"],
+        ["tier.plus"] = ["Plus", "Plus", "Plus", "Plus", "Plus"],
+        ["tier.family"] = ["Семейный", "Aile", "Family", "家庭", "خانوادگی"],
+        ["method.card"] = ["Банковская карта", "Banka kartı", "Bank card", "银行卡", "کارت بانکی"],
+        ["method.sbp"] = ["СБП", "SBP", "SBP", "SBP", "SBP"],
+        ["method.crypto"] = ["Криптовалюта", "Kripto para", "Crypto", "加密货币", "رمزارز"],
+        ["method.kyren"] = ["Alipay / WeChat Pay", "Alipay / WeChat Pay", "Alipay / WeChat Pay", "支付宝 / 微信支付", "Alipay / WeChat Pay"],
+        ["currency.rub"] = ["В рублях (₽)", "Ruble ile (₽)", "In roubles (₽)", "以卢布支付（₽）", "به روبل (₽)"],
+        ["currency.cny"] = ["В юанях (¥)", "Yuan ile (¥)", "In yuan (¥)", "以人民币支付（¥）", "به یوان (¥)"],
 
         // Account
         ["account.kicker"] = ["АККАУНТ", "HESAP", "ACCOUNT", "账户", "حساب"],
