@@ -39,7 +39,7 @@ public static class ColituNetwork
             }
         }
 
-        var resolved = await ResolveViaDohAsync(host, token) ?? await ResolveViaSystemAsync(host, token);
+        var resolved = await ResolveViaDohOrAdapterAsync(host, token) ?? await ResolveViaSystemAsync(host, token);
         if (resolved != null)
         {
             lock (CacheGate)
@@ -48,6 +48,202 @@ public static class ColituNetwork
             }
         }
         return resolved;
+    }
+
+    private const int IpUnicastIf = 31;
+    private static readonly TimeSpan AdapterDnsTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan DohHeadStart = TimeSpan.FromMilliseconds(1500);
+
+    /// <summary>
+    /// DoH first; the physical adapter's own resolvers only when DoH fails or stays silent for
+    /// <see cref="DohHeadStart"/> (both DoH services are blocked in China). Asking them only then
+    /// keeps the server names away from the ISP's resolver wherever DoH works, and a DoH answer
+    /// that arrives before theirs still wins (an ISP resolver may hand out a block page address).
+    /// They are asked straight from this process because the kill switch permits the app on port
+    /// 53 but blocks the Windows DNS client, so the system resolver can't answer while it is armed.
+    /// </summary>
+    private static async Task<IPAddress?> ResolveViaDohOrAdapterAsync(string host, CancellationToken token)
+    {
+        using var race = CancellationTokenSource.CreateLinkedTokenSource(token);
+        try
+        {
+            var doh = ResolveViaDohAsync(host, race.Token);
+            if (await Task.WhenAny(doh, Task.Delay(DohHeadStart, race.Token)) == doh && await doh is { } early)
+            {
+                return early;
+            }
+            var adapter = ResolveViaAdapterDnsAsync(host, race.Token);
+            if (await Task.WhenAny(doh, adapter) == doh && await doh is { } fromDoh)
+            {
+                return fromDoh;
+            }
+            if (await adapter is { } fromAdapter)
+            {
+                Logging.SaveLog($"ColituNetwork | {ColituLogPrivacy.ForLog(host)} resolved through the adapter's DNS (DoH failed or silent)");
+                return fromAdapter;
+            }
+            return await doh;
+        }
+        finally
+        {
+            race.Cancel();
+        }
+    }
+
+    /// <summary>An A record for <paramref name="host"/> from the physical adapter's DNS servers, asked directly over UDP.</summary>
+    internal static async Task<IPAddress?> ResolveViaAdapterDnsAsync(string host, CancellationToken token)
+    {
+        List<IPAddress> servers;
+        int index;
+        try
+        {
+            if (PhysicalInterface() is not { } adapter)
+            {
+                return null;
+            }
+            var properties = adapter.GetIPProperties();
+            servers = properties.DnsAddresses
+                .Where(address => address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(address) && !address.Equals(IPAddress.Any))
+                .Distinct()
+                .Take(3)
+                .ToList();
+            index = properties.GetIPv4Properties().Index;
+        }
+        catch
+        {
+            return null;
+        }
+        if (servers.Count == 0)
+        {
+            return null;
+        }
+
+        using var race = CancellationTokenSource.CreateLinkedTokenSource(token);
+        race.CancelAfter(AdapterDnsTimeout);
+        var pending = servers.Select(server => QueryUdpDnsAsync(server, host, index, race.Token)).ToList();
+        while (pending.Count > 0)
+        {
+            var finished = await Task.WhenAny(pending);
+            pending.Remove(finished);
+            if (await finished is { } address)
+            {
+                race.Cancel();
+                return address;
+            }
+        }
+        return null;
+    }
+
+    internal static async Task<IPAddress?> QueryUdpDnsAsync(IPAddress server, string host, int interfaceIndex, CancellationToken token)
+    {
+        try
+        {
+            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            if (interfaceIndex > 0)
+            {
+                try
+                {
+                    // Out of the physical adapter even while the TUN owns the default route.
+                    // IPv4 IP_UNICAST_IF takes the index in network byte order.
+                    socket.SetSocketOption(SocketOptionLevel.IP, (SocketOptionName)IpUnicastIf,
+                        BitConverter.GetBytes(IPAddress.HostToNetworkOrder(interfaceIndex)));
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            var id = (ushort)Random.Shared.Next(1, ushort.MaxValue);
+            var endpoint = new IPEndPoint(server, 53);
+            await socket.SendToAsync(BuildDnsQuery(id, host), SocketFlags.None, endpoint, token);
+            var buffer = new byte[1500];
+            while (true)
+            {
+                var received = await socket.ReceiveFromAsync(buffer, SocketFlags.None, new IPEndPoint(IPAddress.Any, 0), token);
+                if (received.RemoteEndPoint is not IPEndPoint from || !from.Address.Equals(server))
+                {
+                    continue;
+                }
+                var reply = buffer.AsSpan(0, received.ReceivedBytes).ToArray();
+                if (DnsAnswerState(reply, id) == null)
+                {
+                    continue;
+                }
+                return FirstARecord(reply) is { } address && !IsPlaceholder(address) ? address : null;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (SocketException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The first IPv4 address in the answer section of a DNS reply (CNAMEs skipped); null on errors.</summary>
+    internal static IPAddress? FirstARecord(byte[] reply)
+    {
+        if (reply.Length < 12 || (reply[3] & 0x0F) != 0)
+        {
+            return null;
+        }
+        var questions = reply[4] << 8 | reply[5];
+        var answers = reply[6] << 8 | reply[7];
+        var offset = 12;
+        for (var i = 0; i < questions; i++)
+        {
+            if (!SkipDnsName(reply, ref offset) || offset + 4 > reply.Length)
+            {
+                return null;
+            }
+            offset += 4;
+        }
+        for (var i = 0; i < answers; i++)
+        {
+            if (!SkipDnsName(reply, ref offset) || offset + 10 > reply.Length)
+            {
+                return null;
+            }
+            var type = reply[offset] << 8 | reply[offset + 1];
+            var recordClass = reply[offset + 2] << 8 | reply[offset + 3];
+            var length = reply[offset + 8] << 8 | reply[offset + 9];
+            offset += 10;
+            if (offset + length > reply.Length)
+            {
+                return null;
+            }
+            if (type == 1 && recordClass == 1 && length == 4)
+            {
+                return new IPAddress(reply.AsSpan(offset, 4));
+            }
+            offset += length;
+        }
+        return null;
+    }
+
+    private static bool SkipDnsName(byte[] packet, ref int offset)
+    {
+        while (offset < packet.Length)
+        {
+            var length = packet[offset];
+            if (length == 0)
+            {
+                offset++;
+                return true;
+            }
+            if ((length & 0xC0) == 0xC0)
+            {
+                offset += 2;
+                return offset <= packet.Length;
+            }
+            if ((length & 0xC0) != 0)
+            {
+                return false;
+            }
+            offset += 1 + length;
+        }
+        return false;
     }
 
     private static HttpClient CreateDohClient() => new(new SocketsHttpHandler

@@ -832,6 +832,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 _attemptNodeId = connected is { IsMultihop: true } ? null : ColituAcSpec.NodeId(connectedId) ?? _attemptNodeId;
                 try
                 {
+                    await ColituApiClient.PinDialHostsAsync(config, token);
                     var profiles = await ImportConfigAsync(config, connected);
                     if (forcedFirst != null && profiles.FindIndex(item => item.Candidate.Protocol == forcedFirst) is > 0 and var first)
                     {
