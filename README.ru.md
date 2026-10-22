@@ -15,7 +15,7 @@ Xray и sing-box и управляет системным прокси, TUN-ад
 | | |
 |---|---|
 | Приложение | `Colitu VPN` (`ColituVPN.exe`), WPF на .NET 10 |
-| Версия | `3.0.0` (`src/Directory.Build.props`) |
+| Версия | `3.0.1` (`src/Directory.Build.props`) |
 | ОС | Windows 10 / 11, x64 |
 | Языки | русский, английский, турецкий |
 | Сайт | <https://colitu.com> · [загрузки](https://colitu.com/downloads/windows) |
@@ -111,7 +111,7 @@ pwsh scripts/fetch-cores.ps1
 Затем выполните:
 
 ```powershell
-pwsh .\scripts\build-installer.ps1 -Version 3.0.0
+pwsh .\scripts\build-installer.ps1 -Version 3.0.1
 ```
 
 В `artifacts/installer/` появятся `ColituVPN-Setup-<версия>-x64.exe`, его копия
