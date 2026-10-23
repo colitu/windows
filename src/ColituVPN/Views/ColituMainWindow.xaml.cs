@@ -27,6 +27,8 @@ public partial class ColituMainWindow
     private bool _navigating;
     /// <summary>Bumped on every sign-out: answers to requests of the previous account are dropped.</summary>
     private int _accountEpoch;
+    private Task<bool>? _refreshRun;
+    private int _refreshRunEpoch;
 
     public ColituMainWindow()
     {
@@ -242,8 +244,22 @@ public partial class ColituMainWindow
     /// <summary>
     /// Reloads the account, plan, servers and usage. Also resumes an offline session.
     /// False when the panel could not be reached (the cached details stay on screen).
+    /// Callers share a run that is still going for the same account: during an outage one run
+    /// can outlast the 20 s timer, and runs that piled up behind it all hit the API at once
+    /// when the network came back.
     /// </summary>
-    private async Task<bool> RefreshDataAsync(bool includeAccount = true)
+    private Task<bool> RefreshDataAsync(bool includeAccount = true)
+    {
+        if (_refreshRun is { IsCompleted: false } running && _refreshRunEpoch == _accountEpoch)
+        {
+            return running;
+        }
+        _refreshRunEpoch = _accountEpoch;
+        _refreshRun = RefreshDataOnceAsync(includeAccount);
+        return _refreshRun;
+    }
+
+    private async Task<bool> RefreshDataOnceAsync(bool includeAccount)
     {
         if (!_auth.HasSession)
         {

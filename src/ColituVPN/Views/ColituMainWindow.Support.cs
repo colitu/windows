@@ -25,6 +25,7 @@ public partial class ColituMainWindow
     private ColituSupportConversation? _supportCurrent;
     private string? _supportSignature;
     private int _supportUnread = -1;
+    private bool _supportUnreadBusy;
     private bool _supportBusy;
     private bool _supportSelecting;
     private bool _supportPolling;
@@ -91,12 +92,14 @@ public partial class ColituMainWindow
 
     private async Task CheckSupportUnreadAsync()
     {
-        if (!_auth.HasSession || AppView.Visibility != Visibility.Visible)
+        // One poll at a time: a poll stuck behind a slow session refresh must not queue more.
+        if (_supportUnreadBusy || !_auth.HasSession || AppView.Visibility != Visibility.Visible)
         {
             return;
         }
 
         var epoch = _accountEpoch;
+        _supportUnreadBusy = true;
         try
         {
             var unread = await _support.UnreadAsync();
@@ -131,6 +134,10 @@ public partial class ColituMainWindow
         catch (Exception ex)
         {
             Logging.SaveLog("ColituMainWindow.CheckSupportUnreadAsync", ex);
+        }
+        finally
+        {
+            _supportUnreadBusy = false;
         }
     }
 
