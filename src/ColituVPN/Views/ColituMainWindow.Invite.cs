@@ -41,6 +41,11 @@ public partial class ColituMainWindow
                 return;
             }
             _invite = info;
+            if (info.Invited > 0)
+            {
+                // Colitu Passport: whoever invited someone earns the Companion stamp.
+                _passport.Social.MarkCompanion();
+            }
             ApplyInvite();
             ApplyInviteCard();
         }

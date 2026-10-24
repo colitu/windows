@@ -42,6 +42,10 @@
 		<Resource Include="Resources\banner.jpg" />
 		<Resource Include="Resources\Fonts\*.ttf" />
 		<Resource Include="flags\**\*.svg" />
+		<!-- Colitu Passport art and sounds (converted from the Android art). -->
+		<Resource Include="Resources\Passport\*.png" />
+		<Resource Include="Resources\Passport\*.jpg" />
+		<Resource Include="Resources\Passport\*.wav" />
 	</ItemGroup>
 
 	<ItemGroup>

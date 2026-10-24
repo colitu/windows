@@ -79,6 +79,7 @@ public partial class ColituMainWindow
         HeaderBar.SizeChanged += (_, _) => FitNav();
 
         BuildLanguageSelectors();
+        InitPassport();
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -418,6 +419,7 @@ public partial class ColituMainWindow
             "settings" => SettingsPage,
             "support" => SupportPage,
             "invite" => InvitePage,
+            "passport" => PassportPage,
             _ => HomePage
         };
         foreach (FrameworkElement child in Pages.Children)
@@ -432,7 +434,7 @@ public partial class ColituMainWindow
             "account" => NavAccount,
             "settings" => NavSettings,
             "support" => NavSupport,
-            "invite" => null,
+            "invite" or "passport" => null,
             _ => NavHome
         };
         if (nav == null)
@@ -482,6 +484,12 @@ public partial class ColituMainWindow
                 break;
             case "invite":
                 _ = LoadInviteAsync();
+                break;
+            case "passport":
+                OnPassportOpened();
+                break;
+            case "home":
+                ApplyPassportHome();
                 break;
         }
         UpdateSupportPolling();

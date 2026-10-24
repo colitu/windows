@@ -713,6 +713,25 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Colitu Passport: cover, the nearest goal and the count (ColituMainWindow.Passport.cs). -->
+                            <Button x:Name="PassportHomeCard" Margin="0,16,0,0" Padding="14,12,16,12" AutomationProperties.Name="{s:T passport.open}" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelEdgeBrush}" BorderThickness="1" Click="PassportHomeCard_Click" Style="{StaticResource PassportPlain}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Image x:Name="PassportHomeCover" Height="48" RenderOptions.BitmapScalingMode="HighQuality" Stretch="Uniform" />
+                                    <StackPanel Grid.Column="1" Margin="12,0,10,0" VerticalAlignment="Center">
+                                        <TextBlock FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Text="{s:T passport.title}" />
+                                        <TextBlock x:Name="PassportHomeGoal" Margin="0,3,0,0" FontSize="12.5" Foreground="{StaticResource LilacBrush}" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxHeight="36" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="PassportHomeCount" Grid.Column="2" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource LilacBrush}" />
+                                    <Path Grid.Column="3" Width="10" Height="10" Margin="10,0,0,0" VerticalAlignment="Center" Data="{StaticResource IconChevron}" Stretch="Uniform" Stroke="{StaticResource MutedBrush}" StrokeEndLineCap="Round" StrokeStartLineCap="Round" StrokeThickness="1.8" />
+                                </Grid>
+                            </Button>
+
                             <!-- Plan -->
                             <Border Margin="0,16,0,0" Style="{StaticResource Panel}" Padding="20,18,20,18">
                                 <StackPanel>
@@ -799,6 +818,68 @@
                             <Button x:Name="AdvancedSettingsOnButton" Margin="0,16,0,0" HorizontalAlignment="Center" Click="AdvancedSettingsOn_Click" Content="{s:T mode.advancedSettingsOn}" FontSize="12.5" Style="{StaticResource LinkButton}" Visibility="Collapsed" />
                             <Button x:Name="HomeAdvancedButton" Margin="0,12,0,0" HorizontalAlignment="Center" Click="HomeAdvanced_Click" Content="{s:T mode.advanced}" Style="{StaticResource LinkButton}" Visibility="Collapsed" />
                         </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- Colitu Passport (ColituMainWindow.Passport*.cs): cover and count, one "next up" goal,
+                     three tiles, then the stamps of the chosen chapter. Rules and settings live behind ⓘ. -->
+                <!-- Same place as the other pages (Pages row under the 64 px nav, 44/40 sides, 4 px top);
+                     clipped so the backdrop never draws under the nav bar. -->
+                <Grid x:Name="PassportPage" ClipToBounds="True" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Image Grid.RowSpan="2" IsHitTestVisible="False" Opacity="0.5" Source="/Resources/Passport/passport_bg.jpg" Stretch="UniformToFill" />
+                    <Rectangle Grid.RowSpan="2" IsHitTestVisible="False">
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Offset="0" Color="#000A0A0E" />
+                                <GradientStop Offset="0.75" Color="#660A0A0E" />
+                                <GradientStop Offset="1" Color="#E60A0A0E" />
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Grid x:Name="PassportHeader" MaxWidth="1240" Margin="44,4,40,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="PassportBackButton" AutomationProperties.Name="{s:T passport.back}" Click="PassportBack_Click" Style="{StaticResource PassportRoundButton}" ToolTip="{s:T passport.back}">
+                            <Path Width="12" Height="12" Data="M15 5l-7 7 7 7" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeEndLineCap="Round" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeThickness="2" />
+                        </Button>
+                        <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource Kicker}" Text="COLITU PASSPORT" />
+                            <TextBlock Margin="0,2,0,0" FontSize="22" Style="{StaticResource H2}" Text="{s:T passport.title}" />
+                        </StackPanel>
+                        <Button Grid.Column="2" Margin="0,0,10,0" AutomationProperties.Name="{s:T passport.duel.title}" Click="PassportDuel_Click" Style="{StaticResource PassportRoundButton}" ToolTip="{s:T passport.duel.title}">
+                            <Path Width="16" Height="16" Data="M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h2v2h-2z M18 18h2v2h-2z M14 18h2 M18 14h2" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeLineJoin="Round" StrokeThickness="1.7" />
+                        </Button>
+                        <Button Grid.Column="3" AutomationProperties.Name="{s:T passport.how}" Click="PassportHow_Click" Style="{StaticResource PassportRoundButton}" ToolTip="{s:T passport.how}">
+                            <Grid Width="18" Height="18">
+                                <Ellipse Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" />
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Text="i" />
+                            </Grid>
+                        </Button>
+                    </Grid>
+                    <ScrollViewer x:Name="PassportScroll" Grid.Row="1" Focusable="False" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <Grid x:Name="PassportBody" MaxWidth="1240" Margin="44,4,40,28">
+                            <Grid x:Name="PassportColumns">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="PassportLeftColumn" Width="360" />
+                                    <ColumnDefinition x:Name="PassportGapColumn" Width="36" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <StackPanel x:Name="PassportLeft" />
+                                <StackPanel x:Name="PassportRight" Grid.Column="2" />
+                            </Grid>
+                        </Grid>
                     </ScrollViewer>
                 </Grid>
 
@@ -1870,6 +1951,47 @@
                 <TextBlock x:Name="SurveyThanks" Margin="0,14,0,6" FontSize="15" FontWeight="SemiBold" Text="{s:T survey.thanks}" Visibility="Collapsed" />
             </StackPanel>
         </Border>
+
+        <!-- ── Colitu Passport sheet (a panel over the page: stamp, goals, settings, editor, compare) ── -->
+        <Grid x:Name="PassportSheetLayer" KeyboardNavigation.TabNavigation="Cycle" PreviewKeyDown="PassportSheetLayer_KeyDown" Visibility="Collapsed">
+            <Border x:Name="PassportSheetScrim" Background="#B3050508" MouseLeftButtonUp="PassportSheetScrim_Click" />
+            <Border x:Name="PassportSheet" Width="460" Margin="24,76,24,24" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{StaticResource PassportSheetFill}" BorderBrush="{StaticResource LineStrongBrush}" BorderThickness="1" ClipToBounds="True" CornerRadius="26">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="50" Direction="270" Opacity="0.6" ShadowDepth="14" />
+                </Border.Effect>
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="PassportSheetShift" />
+                </Border.RenderTransform>
+                <Grid>
+                    <!-- A rectangle, not an Image: the art must never size the panel. -->
+                    <Rectangle x:Name="PassportSheetBackdrop" IsHitTestVisible="False" Opacity="0.55" Visibility="Collapsed">
+                        <Rectangle.Fill>
+                            <ImageBrush AlignmentY="Top" ImageSource="/Resources/Passport/passport_sheet_bg.jpg" Stretch="UniformToFill" />
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid x:Name="PassportSheetHeader" Margin="22,16,14,4">
+                            <TextBlock x:Name="PassportSheetTitle" Margin="0,0,48,0" VerticalAlignment="Center" FontSize="20" Style="{StaticResource H2}" TextWrapping="Wrap" />
+                            <Button x:Name="PassportSheetClose" HorizontalAlignment="Right" AutomationProperties.Name="{s:T passport.close}" Click="PassportSheetClose_Click" Style="{StaticResource PassportRoundButton}" ToolTip="{s:T passport.close}">
+                                <Path Width="11" Height="11" Data="{StaticResource IconX}" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeEndLineCap="Round" StrokeStartLineCap="Round" StrokeThickness="2" />
+                            </Button>
+                        </Grid>
+                        <ScrollViewer x:Name="PassportSheetScroll" Grid.Row="1" Focusable="False" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                            <ContentControl x:Name="PassportSheetContent" Margin="22,4,22,6" Focusable="False" />
+                        </ScrollViewer>
+                        <ContentControl x:Name="PassportSheetFooter" Grid.Row="2" Margin="22,6,22,18" Focusable="False" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ── Colitu Passport rewards (full-window animations, ColituMainWindow.PassportReveal.cs) ── -->
+        <Grid x:Name="PassportRevealLayer" KeyboardNavigation.TabNavigation="Cycle" PreviewKeyDown="PassportRevealLayer_KeyDown" Visibility="Collapsed" />
 
         <!-- Window controls (always on top) -->
         <StackPanel Margin="0,15,16,0" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal">

@@ -1,0 +1,171 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework">
+
+    <!--
+        Colitu Passport (colitu-android screens/Passport*.kt): deep indigo page, soft lilac glass
+        cards, borderless stamp grid. Colours are written out here (this dictionary loads next to
+        ColituTheme.xaml, not inside it). Every control shows a lilac ring under keyboard focus.
+    -->
+
+    <SolidColorBrush x:Key="PassportLilac" Color="#C4B5FD" />
+    <SolidColorBrush x:Key="PassportText" Color="#F4F3FA" />
+    <SolidColorBrush x:Key="PassportMuted" Color="#A9ADC2" />
+    <SolidColorBrush x:Key="PassportDim" Color="#6F7186" />
+    <SolidColorBrush x:Key="PassportLine" Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="PassportTileFill" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="PassportSheetFill" Color="#F213112E" />
+    <LinearGradientBrush x:Key="PassportGlassFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#229F8CFF" />
+        <GradientStop Offset="1" Color="#0F9F8CFF" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="PassportGlassEdge" Color="#339F8CFF" />
+    <LinearGradientBrush x:Key="PassportAccent" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Offset="0" Color="#B4A4FF" />
+        <GradientStop Offset="1" Color="#8B78FF" />
+    </LinearGradientBrush>
+    <RadialGradientBrush x:Key="PassportGlow">
+        <GradientStop Offset="0" Color="#559F8CFF" />
+        <GradientStop Offset="1" Color="#009F8CFF" />
+    </RadialGradientBrush>
+
+    <!-- Keyboard focus: a lilac ring just outside the control. -->
+    <Style x:Key="PassportFocus">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-3" RadiusX="14" RadiusY="14" SnapsToDevicePixels="True" Stroke="#C4B5FD" StrokeThickness="2" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- A clickable area without chrome (cards, tiles, stamps); hover lightens it a little. -->
+    <Style x:Key="PassportPlain" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="#F4F3FA" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource PassportFocus}" />
+        <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border x:Name="Body" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="18">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <Border x:Name="Hover" Background="#0EFFFFFF" CornerRadius="18" IsHitTestVisible="False" Opacity="0" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Hover" Property="Opacity" Value="1" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Hover" Property="Background" Value="#1AFFFFFF" />
+                            <Setter TargetName="Hover" Property="Opacity" Value="1" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Round icon button of the passport header (back, QR, info). -->
+    <Style x:Key="PassportRoundButton" TargetType="Button" BasedOn="{StaticResource PassportPlain}">
+        <Setter Property="Width" Value="40" />
+        <Setter Property="Height" Value="40" />
+        <Setter Property="Background" Value="#14FFFFFF" />
+        <Setter Property="BorderBrush" Value="#1FFFFFFF" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="#A9ADC2" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Ellipse Fill="{TemplateBinding Background}" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="1" />
+                        <Ellipse x:Name="Hover" Fill="#1AFFFFFF" Opacity="0" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Hover" Property="Opacity" Value="1" />
+                            <Setter Property="Foreground" Value="#F4F3FA" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Quiet text tab of a chapter: kicker number, name, underline when active. -->
+    <Style x:Key="PassportChapterTab" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="#A9ADC2" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource PassportFocus}" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border Padding="{TemplateBinding Padding}" Background="Transparent">
+                        <StackPanel>
+                            <ContentPresenter HorizontalAlignment="Center" />
+                            <Border x:Name="Line" Width="28" Height="2" Margin="0,6,0,0" HorizontalAlignment="Center" Background="Transparent" CornerRadius="1" />
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Line" Property="Background" Value="#C4B5FD" />
+                            <Setter Property="Foreground" Value="#F4F3FA" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="#F4F3FA" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Selectable pill (title choice, duel modes); lilac when chosen. -->
+    <Style x:Key="PassportChip" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="#F4F3FA" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="14,8" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource PassportFocus}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Body" Padding="{TemplateBinding Padding}" Background="#10FFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" CornerRadius="17">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Body" Property="Background" Value="#339F8CFF" />
+                            <Setter TargetName="Body" Property="BorderBrush" Value="#C4B5FD" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Body" Property="Background" Value="#24FFFFFF" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="#6F7186" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

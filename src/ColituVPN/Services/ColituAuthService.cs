@@ -492,6 +492,29 @@ public sealed class ColituAuthService
         }
     }
 
+    /// <summary>
+    /// Colitu Passport's anonymous daily counters (POST /passport/metrics): no token, no device id,
+    /// only the totals in <paramref name="body"/>. True when the panel took them.
+    /// </summary>
+    public async Task<bool> PostPassportMetricsAsync(object body)
+    {
+        try
+        {
+            using var response = await SendApiAsync(_httpClient, () =>
+            {
+                var request = JsonRequest(HttpMethod.Post, "/passport/metrics", body);
+                AddClientHeaders(request, includeDevice: false);
+                return request;
+            }, CancellationToken.None);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog($"ColituAuthService.PostPassportMetrics: {ex.GetType().Name}");
+            return false;
+        }
+    }
+
     public async Task<T?> ReadResponseJsonAsync<T>(HttpResponseMessage response) => await ReadJsonAsync<T>(response);
 
     public async Task PostAuthorizedAsync(string path, object body)
