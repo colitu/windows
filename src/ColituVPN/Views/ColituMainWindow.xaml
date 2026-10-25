@@ -1111,12 +1111,6 @@
                                                 <TextBlock FontSize="13.5" Text="{s:T account.signOut}" />
                                             </Button>
                                         </WrapPanel>
-                                        <Button Margin="0,2,0,0" Padding="18,10" HorizontalAlignment="Left" Click="Review_Click" Style="{StaticResource SecondaryButton}">
-                                            <StackPanel>
-                                                <TextBlock FontSize="13.5" Text="{s:T account.review}" />
-                                                <TextBlock Margin="0,2,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="{s:T account.reviewHint}" />
-                                            </StackPanel>
-                                        </Button>
                                     </StackPanel>
                                 </Border>
 

@@ -745,8 +745,6 @@ public sealed partial class Loc : INotifyPropertyChanged
         ["invite.card.body"] = ["Вам обоим — {days} дн. Premium", "İkinize de {days} gün Premium", "{days} days of Premium for both of you", "你们两人各得 {days} 天 Premium", "هر دوی شما {days} روز Premium می‌گیرید"],
         ["invite.telegram"] = ["Telegram", "Telegram", "Telegram", "Telegram", "Telegram"],
         ["invite.whatsapp"] = ["WhatsApp", "WhatsApp", "WhatsApp", "WhatsApp", "WhatsApp"],
-        ["account.review"] = ["Оставьте отзыв о расширении", "Eklentimize yorum bırak", "Review our browser extension", "为我们的浏览器扩展写评价", "برای افزونه ما نظر بگذارید"],
-        ["account.reviewHint"] = ["Короткий отзыв помогает другим найти Colitu.", "Kısa bir yorum, başkalarının Colitu'yu bulmasına çok yardım eder.", "A short review helps others find Colitu.", "简短的评价能帮助更多人发现 Colitu。", "یک نظر کوتاه به دیگران کمک می‌کند Colitu را پیدا کنند."],
         ["invite.codeLine"] = ["Ваш код: {code}. Его также можно ввести при регистрации в приложении.", "Kodunuz: {code}. Uygulamada kayıt olurken de girilebilir.", "Your code: {code}. It can also be entered when signing up in the app.", "你的邀请码：{code}。也可以在应用内注册时输入。", "کد شما: {code}. هنگام ثبت‌نام در برنامه هم می‌توانید آن را وارد کنید."],
         ["invite.stat.invited"] = ["Приглашено", "Davet edilen", "Invited", "已邀请", "دعوت‌شده"],
         ["invite.stat.valid"] = ["Действительные приглашения", "Geçerli davet", "Valid invites", "有效邀请", "دعوت‌های معتبر"],

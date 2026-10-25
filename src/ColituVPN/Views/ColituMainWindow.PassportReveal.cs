@@ -261,9 +261,13 @@ public partial class ColituMainWindow
         _revealAuto.Start();
     }
 
-    private static TextBlock RevealTitle(string text, double size = 30)
+    /// <summary>
+    /// The reveal's big title in capitals. <paramref name="name"/>: an English name kept in every language
+    /// (badge, set, chapter, Companion), upper-cased without the UI culture so Turkish does not turn it into "FİRST CONNECTİON".
+    /// </summary>
+    private static TextBlock RevealTitle(string text, double size = 30, bool name = false)
     {
-        var title = PassportUi.Label(text.ToUpper(Loc.I.Culture), size, PassportUi.Text, FontWeights.Bold, TextAlignment.Center);
+        var title = PassportUi.Label(name ? text.ToUpperInvariant() : text.ToUpper(Loc.I.Culture), size, PassportUi.Text, FontWeights.Bold, TextAlignment.Center);
         title.HorizontalAlignment = HorizontalAlignment.Center;
         return title;
     }
@@ -509,7 +513,7 @@ public partial class ColituMainWindow
         }
         var words = new StackPanel { Margin = new Thickness(0, 18, 0, 0) };
         words.Children.Add(PassportUi.Kicker(loc["passport.r.setDone"], new SolidColorBrush(color), TextAlignment.Center));
-        var big = RevealTitle(set.Title);
+        var big = RevealTitle(set.Title, name: true);
         big.Margin = new Thickness(0, 8, 0, 6);
         words.Children.Add(big);
         if (set.Cover is { } cover)
@@ -580,7 +584,7 @@ public partial class ColituMainWindow
         }
         var words = new StackPanel { Margin = new Thickness(0, 22, 0, 0) };
         words.Children.Add(PassportUi.Kicker(a.Secret ? loc["passport.r.secretAch"] : loc["passport.r.ach"], align: TextAlignment.Center));
-        var big = RevealTitle(a.Title, 28);
+        var big = RevealTitle(a.Title, 28, name: true);
         big.Margin = new Thickness(0, 8, 0, 6);
         words.Children.Add(big);
         words.Children.Add(PassportUi.Label(loc[$"passport.ach.{a.Id}"], 14, PassportUi.Muted, align: TextAlignment.Center));
@@ -605,7 +609,7 @@ public partial class ColituMainWindow
         var kicker = PassportUi.Kicker(loc["passport.r.chapterOpen"], align: TextAlignment.Center);
         Rise(kicker, 0.3);
         column.Children.Add(kicker);
-        var big = RevealTitle(loc[$"passport.ch{e.Code}"], 32);
+        var big = RevealTitle(loc[$"passport.ch{e.Code}"], 32, name: true);
         big.Margin = new Thickness(0, 10, 0, 10);
         Rise(big, 0.55, 0.6, 30);
         column.Children.Add(big);
@@ -686,7 +690,7 @@ public partial class ColituMainWindow
         }
         var words = new StackPanel { Margin = new Thickness(0, 22, 0, 0) };
         words.Children.Add(PassportUi.Kicker(loc["passport.r.special"], align: TextAlignment.Center));
-        var big = RevealTitle("Companion");
+        var big = RevealTitle("Companion", name: true);
         big.Margin = new Thickness(0, 8, 0, 6);
         words.Children.Add(big);
         words.Children.Add(PassportUi.Label(loc["passport.companion.body"], 14, PassportUi.Muted, align: TextAlignment.Center));

@@ -133,9 +133,6 @@ public partial class ColituMainWindow
 
     private void ManageAccount_Click(object sender, RoutedEventArgs e) => OpenUrl(LocalizedPath("/account"));
 
-    /// <summary>The site sends the visitor to the Chrome Web Store or Firefox Add-ons page by browser. No reward is offered for a review.</summary>
-    private void Review_Click(object sender, RoutedEventArgs e) => OpenUrl(LocalizedPath("/review"));
-
     private void Support_Click(object sender, RoutedEventArgs e) => Navigate("support");
 
     private void MailSupport_Click(object sender, RoutedEventArgs e) => OpenUrl($"mailto:{ColituAuthService.SupportEmail}");
