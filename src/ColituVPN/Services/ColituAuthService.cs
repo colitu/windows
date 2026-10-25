@@ -493,25 +493,24 @@ public sealed class ColituAuthService
     }
 
     /// <summary>
-    /// Colitu Passport's anonymous daily counters (POST /passport/metrics): no token, no device id,
-    /// only the totals in <paramref name="body"/>. True when the panel took them.
+    /// Colitu Passport (account-based, /client/passport…): any request with the session; the status and
+    /// body come back as they are (status 0 when there is no session or no answer).
     /// </summary>
-    public async Task<bool> PostPassportMetricsAsync(object body)
+    public async Task<PassportResponse> SendPassportAsync(HttpMethod method, string path, object? body, CancellationToken token = default)
     {
+        if (!HasSession)
+        {
+            return new PassportResponse(0, "");
+        }
         try
         {
-            using var response = await SendApiAsync(_httpClient, () =>
-            {
-                var request = JsonRequest(HttpMethod.Post, "/passport/metrics", body);
-                AddClientHeaders(request, includeDevice: false);
-                return request;
-            }, CancellationToken.None);
-            return response.IsSuccessStatusCode;
+            using var response = await SendAuthorizedAsync(() => body == null ? new HttpRequestMessage(method, BuildUri(path)) : JsonRequest(method, path, body), token: token);
+            return new PassportResponse((int)response.StatusCode, await response.Content.ReadAsStringAsync(token));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            Logging.SaveLog($"ColituAuthService.PostPassportMetrics: {ex.GetType().Name}");
-            return false;
+            Logging.SaveLog($"ColituAuthService.SendPassport {path}: {ex.GetType().Name}");
+            return new PassportResponse(0, "");
         }
     }
 

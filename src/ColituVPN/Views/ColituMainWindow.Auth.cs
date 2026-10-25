@@ -130,11 +130,6 @@ public partial class ColituMainWindow
             PasswordBox.Clear();
             PasswordPlainBox.Clear();
             PasswordRepeatBox.Clear();
-            if (_registerMode && ColituReferral.NormalizeInvite(InviteBox.Text) != null)
-            {
-                // Colitu Passport: signing up with an invite earns the Companion stamp.
-                _passport.Social.MarkCompanion();
-            }
             InviteBox.Clear();
             if (result.RequiresEmailVerification)
             {

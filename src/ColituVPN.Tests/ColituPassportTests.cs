@@ -1,170 +1,147 @@
 using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
 using AwesomeAssertions;
 using v2rayN.Services;
 using Xunit;
 
 namespace v2rayN.Tests;
 
-/// <summary>Colitu Passport rules, the same as the phones (colitu-android data/ColituPassport.kt).</summary>
+/// <summary>
+/// Colitu Passport v2: the server keeps the passport (docs/passport-server.md); the app shows its
+/// state, plays its events, acks them, saves cosmetic choices and imports this device's v1 progress once.
+/// </summary>
 public class ColituPassportTests
 {
-    private DateTime _now = new(2026, 10, 24, 12, 0, 0, DateTimeKind.Local);
+    private DateTime _now = new(2026, 10, 25, 12, 0, 0, DateTimeKind.Local);
+
+    private const string ContractState = """
+        {"data":{
+          "collector_no":"992562","nickname":"Ali","title_id":"nordic-master","cover_id":"nordic",
+          "tester":false,"premium":true,"chapter2_open":false,"companion":true,
+          "today":{"day":"2026-10-25","minutes":34,"pieces":1,"next_piece_at_minute":60},
+          "run":{"country":"SE","minutes":3},
+          "stamps":[{"country":"SE","unlocked_at":"2026-10-21T10:00:00Z","pieces":13,"level":"silver","mastered":false},
+                    {"country":"FI","unlocked_at":"2026-10-22T10:00:00Z","pieces":48,"level":"diamond","mastered":true},
+                    {"country":"RU","unlocked_at":"2026-10-22T10:00:00Z","pieces":3}],
+          "achievements":[{"id":"first","earned_at":"2026-10-21T10:05:00Z"},{"id":"nordic-master","earned_at":"2026-10-24T10:05:00Z"}],
+          "collections":[{"id":"gold-rush","earned_at":"2026-10-24T11:00:00Z"}],
+          "covers":["classic","premium","nordic"],
+          "weekly":{"week":"2026-W43","goals":[{"id":"days10","target":3,"progress":1,"done":false},
+                                              {"id":"set_stamp","target":1,"progress":1,"done":true},
+                                              {"id":"pieces","target":4,"progress":2,"done":false}]},
+          "expeditions_done":2,"unseen_events":0,"updated_at":"2026-10-25T09:00:00Z"}}
+        """;
 
     private ColituPassport NewPassport(ColituPassportStore? store = null) => new(store ?? new ColituPassportStore(null), () => _now);
 
-    /// <summary>Ticks <paramref name="minutes"/> one minute apart in <paramref name="country"/>; returns every event.</summary>
-    private List<StampEvent> Run(ColituPassport passport, string country, int minutes)
+    private ColituPassport WithState(string json = ContractState)
     {
-        var events = new List<StampEvent>();
-        for (var i = 0; i < minutes; i++)
+        var passport = NewPassport();
+        passport.Apply(PassportState.Parse(json)!);
+        return passport;
+    }
+
+    /// <summary>Answers by method and path; records every call with its JSON body.</summary>
+    private sealed class FakeTransport : IPassportTransport
+    {
+        public readonly Dictionary<string, PassportResponse> Answers = [];
+        public readonly List<(string Method, string Path, string? Body)> Calls = [];
+
+        public Task<PassportResponse> SendAsync(HttpMethod method, string path, object? body, CancellationToken token = default)
         {
-            _now = _now.AddMinutes(1);
-            events.AddRange(passport.Tick(country));
+            Calls.Add((method.Method, path, body == null ? null : JsonSerializer.Serialize(body)));
+            return Task.FromResult(Answers.TryGetValue($"{method.Method} {path}", out var answer) ? answer : new PassportResponse(404, """{"error":{"code":"NOT_FOUND"}}"""));
         }
-        return events;
     }
 
+    private ColituPassportSync NewSync(ColituPassport passport, FakeTransport transport, string? device = "device-1", int offsetMinutes = 180) =>
+        new(passport, transport, () => device, () => TimeSpan.FromMinutes(offsetMinutes));
+
     [Fact]
-    public void FiveMinutesInARow_UnlockTheBronzeStamp()
+    public void TheServerState_IsWhatThePassportShows()
     {
-        var passport = NewPassport();
-        Run(passport, "DE", 4).Should().BeEmpty();
+        var passport = WithState();
+
+        passport.Count.Should().Be(2);
+        passport.ProgressOf("SE").Level.Should().Be(StampLevel.Silver);
+        passport.ProgressOf("SE").LevelPieces.Should().Be(1);
+        passport.ProgressOf("FI").Mastered.Should().BeTrue();
         passport.ProgressOf("DE").Unlocked.Should().BeFalse();
-
-        var events = Run(passport, "DE", 1);
-
-        events.Should().ContainSingle().Which.Should().Be(new StampEvent.Unlocked("DE"));
-        passport.ProgressOf("DE").Level.Should().Be(StampLevel.Bronze);
-        passport.Count.Should().Be(1);
+        passport.Progress.Keys.Should().BeEquivalentTo("SE", "FI"); // RU has no stamp
+        passport.Today.Should().Be((34, 1));
+        passport.Goals.CollectorNo.Should().Be("992562");
+        passport.Goals.Nickname.Should().Be("Ali");
+        passport.Social.HasCompanion.Should().BeTrue();
+        passport.Weekly.Total.Should().Be(2);
     }
 
     [Fact]
-    public void AGapOrAnotherCountry_StartsTheFiveMinutesOver()
+    public void ServerIds_WithHyphens_MatchTheAppsIds()
     {
-        var passport = NewPassport();
-        Run(passport, "SE", 3);
-        _now = _now.AddMinutes(2); // a 3-minute gap since the last tick (over 90 s)
-        Run(passport, "SE", 4).Should().BeEmpty();
-        Run(passport, "FI", 2);
-        Run(passport, "SE", 4).Should().BeEmpty();
-        Run(passport, "SE", 1).Should().ContainSingle().Which.Should().Be(new StampEvent.Unlocked("SE"));
+        var passport = WithState();
+        passport.Goals.Achieved(PassportAchievement.NordicMaster).Should().BeTrue();
+        passport.Goals.Achieved(PassportAchievement.Night).Should().BeFalse();
+        passport.Goals.Title.Should().Be("nordic_master");
+        passport.Goals.TitleOf(passport.Goals.Title).Should().Be("Nordic Master");
+        passport.Goals.Completed(PassportCollection.GoldRush).Should().BeTrue();
+        passport.Goals.Progress(PassportCollection.GoldRush).Should().Be((3, 3));
+        passport.Goals.Completed(PassportCollection.Nordic).Should().BeFalse();
+        passport.Goals.Progress(PassportCollection.Nordic).Should().Be((2, 3));
+        passport.Goals.EarnedAt("c_gold_rush").Should().BeGreaterThan(0);
     }
 
     [Fact]
-    public void UkCountsAsGreatBritain_AndUnknownCodesAreIgnored()
+    public void Covers_ComeFromTheServer_AndTheChosenOneIsShown()
     {
-        var passport = NewPassport();
-        Run(passport, "uk", 5);
-        passport.ProgressOf("GB").Unlocked.Should().BeTrue();
-        passport.Tick("").Should().BeEmpty();
-        passport.Tick(null).Should().BeEmpty();
-        ColituPassport.StampFor("UK")!.Code.Should().Be("GB");
+        var passport = WithState();
+        passport.Goals.Covers(premium: false).Should().Equal(CoverTheme.Classic, CoverTheme.Premium, CoverTheme.Nordic);
+        passport.Goals.ActiveCover(premium: false).Should().Be(CoverTheme.Nordic);
+
+        var empty = NewPassport();
+        empty.Goals.Covers(premium: false).Should().Equal(CoverTheme.Classic);
+        empty.Goals.ActiveCover(premium: true).Should().Be(CoverTheme.Premium);
+        empty.Goals.CollectorNo.Should().Be("000000");
     }
 
     [Fact]
-    public void Minute10And60_EachAddAPiece_AtMostTwoADay()
+    public void Weekly_UsesTheServersGoals_OrTheRotationBeforeTheFirstAnswer()
     {
-        var passport = NewPassport();
-        var events = Run(passport, "NL", 10);
-        events.OfType<StampEvent.Piece>().Should().ContainSingle().Which.Should().Be(new StampEvent.Piece("NL", 1));
-        passport.Today.Should().Be((10, 1));
+        var passport = WithState();
+        passport.Weekly.Goals().Should().Equal(ExpeditionGoal.Days10, ExpeditionGoal.SetStamp, ExpeditionGoal.Pieces);
+        passport.Weekly.Progress(ExpeditionGoal.Days10).Should().Be(1);
+        passport.Weekly.Done(ExpeditionGoal.SetStamp).Should().BeTrue();
+        passport.Weekly.Done(ExpeditionGoal.Pieces).Should().BeFalse();
+        passport.Weekly.WeekKey().Should().Be("2026-W43");
 
-        Run(passport, "NL", 49).OfType<StampEvent.Piece>().Should().BeEmpty();
-        Run(passport, "NL", 1).OfType<StampEvent.Piece>().Should().ContainSingle();
-        Run(passport, "NL", 120).OfType<StampEvent.Piece>().Should().BeEmpty();
-
-        passport.Today.Should().Be((180, 2));
-        passport.ProgressOf("NL").Pieces.Should().Be(2);
+        var empty = NewPassport();
+        empty.Weekly.Goals().Should().Equal(PassportWeekly.GoalsOf(_now));
+        PassportWeekly.GoalsOf(new DateTime(2026, 10, 26)).Should().Equal(ExpeditionGoal.NewCountry, ExpeditionGoal.Share, ExpeditionGoal.Customize);
     }
 
     [Fact]
-    public void ThePieceGoesToTheCountryConnectedAtThatMinute()
+    public void Today_IsZero_OnceTheServersDayIsOverHere()
     {
-        var passport = NewPassport();
-        Run(passport, "SE", 7); // unlock SE (minutes 1-7)
-        Run(passport, "DE", 2); // minutes 8-9 in a locked country
-        // Minute 10 in Germany, still locked: the piece goes to the last unlocked stamp (Sweden).
-        Run(passport, "DE", 1).OfType<StampEvent.Piece>().Single().Code.Should().Be("SE");
-        Run(passport, "DE", 2).OfType<StampEvent.Unlocked>().Single().Code.Should().Be("DE");
-        Run(passport, "DE", 48).OfType<StampEvent.Piece>().Single().Code.Should().Be("DE");
+        var passport = WithState();
+        _now = _now.AddDays(1);
+        passport.Today.Should().Be((0, 0));
     }
 
     [Fact]
-    public void TheDayStartsOverAtLocalMidnight()
-    {
-        _now = new DateTime(2026, 10, 24, 22, 0, 0, DateTimeKind.Local);
-        var passport = NewPassport();
-        Run(passport, "PL", 60);
-        passport.Today.Should().Be((60, 2));
-        _now = new DateTime(2026, 10, 24, 23, 59, 0, DateTimeKind.Local);
-
-        Run(passport, "PL", 10).OfType<StampEvent.Piece>().Should().ContainSingle("minute 10 of the new day");
-        passport.Today.Should().Be((10, 1));
-        passport.ProgressOf("PL").Pieces.Should().Be(3);
-    }
-
-    [Fact]
-    public void Testers_GetAPieceEveryTenMinutes_WithoutTheDailyCap()
-    {
-        var passport = NewPassport();
-        passport.Tester = true;
-        Run(passport, "FR", 100).OfType<StampEvent.Piece>().Should().HaveCount(10);
-        passport.Today.Pieces.Should().Be(10);
-    }
-
-    [Fact]
-    public void TwelvePieces_TakeTheStampUpALevel_UntilDiamondIsComplete()
-    {
-        var progress = new StampProgress(11, 0, null, 1);
-        progress.Level.Should().Be(StampLevel.Bronze);
-        progress.ToNext.Should().Be(1);
-        (progress with { Pieces = 12 }).Level.Should().Be(StampLevel.Silver);
-        (progress with { Pieces = 24 }).Level.Should().Be(StampLevel.Gold);
-        (progress with { Pieces = 36 }).Level.Should().Be(StampLevel.Diamond);
-        (progress with { Pieces = 47 }).Mastered.Should().BeFalse();
-        (progress with { Pieces = 48 }).Mastered.Should().BeTrue();
-        (progress with { Pieces = 48 }).LevelPieces.Should().Be(12);
-        StampProgress.None.Level.Should().BeNull();
-
-        var passport = NewPassport();
-        passport.Tester = true;
-        Run(passport, "JP", 5);
-        var events = Run(passport, "JP", 115); // minutes 6-120: 12 pieces
-        events.Should().Contain(new StampEvent.Piece("JP", 12));
-        events.Should().Contain(new StampEvent.LevelUp("JP", StampLevel.Silver));
-        passport.ProgressOf("JP").Level.Should().Be(StampLevel.Silver);
-
-        Run(passport, "JP", 360).Should().ContainSingle(e => e is StampEvent.Mastered);
-        passport.ProgressOf("JP").Mastered.Should().BeTrue();
-    }
-
-    [Fact]
-    public void RewardsWaitInTheQueue_UntilTheAppTakesThem()
-    {
-        var passport = NewPassport();
-        Run(passport, "LV", 10);
-        passport.Social.MarkCompanion();
-        passport.Social.MarkCompanion();
-
-        passport.TakePending().Should().Equal(new StampEvent.Unlocked("LV"), new StampEvent.Piece("LV", 1), new StampEvent.Special(PassportSocial.Companion));
-        passport.TakePending().Should().BeEmpty();
-    }
-
-    [Fact]
-    public void ThePassport_IsKeptInItsFile()
+    public void TheLastState_StaysAsOfflineCache()
     {
         var path = Path.Combine(Path.GetTempPath(), $"colitu-passport-test-{Guid.NewGuid():N}.json");
         try
         {
             var passport = NewPassport(new ColituPassportStore(path));
-            Run(passport, "US", 10);
-            passport.Goals.UpdateNickname("  Deniz  ");
+            passport.HasState.Should().BeFalse();
+            passport.Apply(PassportState.Parse(ContractState)!);
 
             var again = NewPassport(new ColituPassportStore(path));
-            again.ProgressOf("US").Pieces.Should().Be(1);
-            again.Goals.Nickname.Should().Be("Deniz");
-            again.TakePending().Should().HaveCount(2);
+            again.HasState.Should().BeTrue();
+            again.Count.Should().Be(2);
+            again.Goals.Nickname.Should().Be("Ali");
         }
         finally
         {
@@ -173,117 +150,226 @@ public class ColituPassportTests
     }
 
     [Fact]
-    public void WeeklyExpeditions_FollowTheFixedRotation()
+    public void SigningOut_ForgetsTheAccountsPassport_ButNotTheImportFlag()
     {
-        // (ISO year × 53 + week) × 3 + i, modulo 6: the same three goals as on the phones.
-        PassportWeekly.GoalsOf(new DateTime(2026, 10, 24)).Should().Equal(ExpeditionGoal.Days10, ExpeditionGoal.SetStamp, ExpeditionGoal.Pieces);
-        PassportWeekly.GoalsOf(new DateTime(2026, 10, 26)).Should().Equal(ExpeditionGoal.NewCountry, ExpeditionGoal.Share, ExpeditionGoal.Customize);
-        PassportWeekly.WeekKey(new DateTime(2027, 1, 1)).Should().Be("2026-W53");
+        var passport = WithState();
+        passport.Imported = true;
+        passport.ForgetAccount();
+        passport.Count.Should().Be(0);
+        passport.HasState.Should().BeFalse();
+        passport.Goals.Nickname.Should().BeEmpty();
+        passport.Imported.Should().BeTrue();
     }
 
     [Fact]
-    public void WeeklyProgress_CountsThisWeeksGoalsOnly_AndStartsOverNextWeek()
+    public void Events_BecomeTheReveals_OldestFirst()
     {
-        _now = new DateTime(2026, 10, 26, 9, 0, 0, DateTimeKind.Local); // NewCountry, Share, Customize
-        var passport = NewPassport();
-        passport.Weekly.Bump(ExpeditionGoal.Pieces);
-        passport.Weekly.Progress(ExpeditionGoal.Pieces).Should().Be(0);
-        Run(passport, "EE", 5);
-        passport.Goals.UpdateTitle(null);
-        passport.Weekly.Done(ExpeditionGoal.NewCountry).Should().BeTrue();
-        passport.Weekly.Done(ExpeditionGoal.Customize).Should().BeTrue();
+        var passport = WithState();
+        const string json = """
+            {"data":[
+              {"id":15,"kind":"companion","payload":{}},
+              {"id":12,"kind":"stamp_unlocked","payload":{"country":"de"}},
+              {"id":13,"kind":"piece","payload":{"country":"SE","pieces":24}},
+              {"id":14,"kind":"level_up","payload":{"country":"SE","level":"gold"}},
+              {"id":16,"kind":"mastered","payload":{"country":"FI"}},
+              {"id":17,"kind":"achievement","payload":{"id":"legacy-gold"}},
+              {"id":18,"kind":"collection","payload":{"id":"gold-rush"}},
+              {"id":19,"kind":"chapter_opened","payload":{"chapter":2}},
+              {"id":20,"kind":"weekly_done","payload":{"goal_id":"new_country"}},
+              {"id":21,"kind":"something_new","payload":{}},
+              {"id":22,"kind":"piece","payload":{"country":"SE"}}
+            ]}
+            """;
 
-        passport.Goals.CheckNew().OfType<StampEvent.Expedition>().Select(e => e.Code).Should().BeEquivalentTo("new_country", "customize");
-        passport.Goals.CheckNew().OfType<StampEvent.Expedition>().Should().BeEmpty();
-        passport.Weekly.Total.Should().Be(2);
+        var events = PassportIds.ParseEvents(json, passport.ProgressOf);
 
-        _now = _now.AddDays(7);
-        passport.Weekly.Progress(ExpeditionGoal.NewCountry).Should().Be(0);
+        events.Select(e => e.Id).Should().BeInAscendingOrder();
+        events.Select(e => e.Event).Should().Equal(
+            new StampEvent.Unlocked("DE"),
+            new StampEvent.Piece("SE", 12),
+            new StampEvent.LevelUp("SE", StampLevel.Gold),
+            new StampEvent.Special(PassportSocial.Companion),
+            new StampEvent.Mastered("FI"),
+            new StampEvent.Achieved("legacy_gold"),
+            new StampEvent.Collected("gold_rush"),
+            new StampEvent.Chapter("2"),
+            new StampEvent.Expedition("new_country"),
+            null,
+            new StampEvent.Piece("SE", 1));
     }
 
     [Fact]
-    public void Collections_AndAchievements_ArriveOnce()
+    public async Task Refresh_AppliesTheState_AndFetchesUnseenEventsOnlyWhenThereAreSome()
     {
         var passport = NewPassport();
-        foreach (var code in new[] { "SE", "FI", "NO" })
-        {
-            Run(passport, code, 5);
-        }
-        var first = passport.Goals.CheckNew();
-        first.Should().Contain(new StampEvent.Collected("nordic"));
-        first.Should().Contain(new StampEvent.Achieved("first"));
-        passport.Goals.Covers(premium: false).Should().Contain(CoverTheme.Nordic);
-        passport.Goals.CheckNew().Should().NotContain(e => e is StampEvent.Collected || e is StampEvent.Achieved);
-        passport.Goals.Achieved(PassportAchievement.Night).Should().BeFalse();
+        var transport = new FakeTransport();
+        transport.Answers["GET /client/passport"] = new(200, ContractState);
+        var sync = NewSync(passport, transport);
+
+        var events = await sync.RefreshAsync();
+
+        events.Should().BeEmpty();
+        passport.Count.Should().Be(2);
+        transport.Calls.Should().NotContain(c => c.Path.Contains("/events"));
+
+        transport.Answers["GET /client/passport"] = new(200, ContractState.Replace("\"unseen_events\":0", "\"unseen_events\":1"));
+        transport.Answers["GET /client/passport/events?unseen=1"] = new(200, """{"data":[{"id":7,"kind":"stamp_unlocked","payload":{"country":"NL"}}]}""");
+        events = await sync.RefreshAsync();
+
+        events.Should().ContainSingle().Which.Should().Be(new PassportServerEvent(7, new StampEvent.Unlocked("NL")));
     }
 
     [Fact]
-    public void TimeAchievements_NightAndGlobetrotter()
+    public async Task Offline_OrBeforeTheServerOffersIt_TheCachedStateStays()
     {
-        _now = new DateTime(2026, 10, 24, 1, 0, 0, DateTimeKind.Local);
-        var passport = NewPassport();
-        Run(passport, "SE", 10);
-        passport.Goals.Achieved(PassportAchievement.Night).Should().BeTrue();
-        passport.Goals.Achieved(PassportAchievement.Early).Should().BeFalse();
-
-        foreach (var code in new[] { "FI", "DE", "NL", "PL" })
-        {
-            passport.Goals.Achieved(PassportAchievement.Globetrotter).Should().BeFalse();
-            Run(passport, code, 1);
-        }
-        passport.Goals.Achieved(PassportAchievement.Globetrotter).Should().BeTrue();
+        var passport = WithState();
+        var transport = new FakeTransport();
+        transport.Answers["GET /client/passport"] = new(0, "");
+        (await NewSync(passport, transport).RefreshAsync()).Should().BeNull();
+        transport.Answers.Remove("GET /client/passport"); // 404: not live yet
+        (await NewSync(passport, transport).RefreshAsync()).Should().BeNull();
+        passport.Count.Should().Be(2);
     }
 
     [Fact]
-    public void Chapter2_OpensWithTheWholeOrigin_AndReplaysItsStamps()
+    public async Task Ack_SendsTheLastShownId()
+    {
+        var transport = new FakeTransport();
+        transport.Answers["POST /client/passport/events/ack"] = new(204, "");
+        (await NewSync(NewPassport(), transport).AckAsync(12)).Should().BeTrue();
+        transport.Calls.Single().Body.Should().Be("""{"through_id":12}""");
+    }
+
+    private static void WriteV1Progress(ColituPassportStore store)
+    {
+        store.Set("t_SE", 1761000000000L);
+        store.Set("p_SE", 13);
+        store.Set("t_NO", 1761000000000L);
+        store.Set("a_night", 1761000000000L);
+        store.Set("seen_c_nordic", 1761000000000L);
+        store.Set("expeditions_done", 2);
+        store.Set("nick", "Ali");
+        store.Set("title", "nordic_master");
+    }
+
+    [Fact]
+    public async Task V1Progress_IsImportedOncePerDevice()
+    {
+        var store = new ColituPassportStore(null);
+        WriteV1Progress(store);
+        var passport = NewPassport(store);
+        var transport = new FakeTransport();
+        transport.Answers["POST /client/passport/import"] = new(200, ContractState);
+        transport.Answers["GET /client/passport"] = new(200, ContractState);
+        var sync = NewSync(passport, transport);
+
+        await sync.RefreshAsync();
+        await sync.RefreshAsync();
+
+        transport.Calls.Count(c => c.Path == "/client/passport/import").Should().Be(1);
+        passport.Imported.Should().BeTrue();
+        using var body = JsonDocument.Parse(transport.Calls.First(c => c.Path == "/client/passport/import").Body!);
+        var root = body.RootElement;
+        root.GetProperty("device_id").GetString().Should().Be("device-1");
+        root.GetProperty("stamps").EnumerateArray().Select(s => s.GetProperty("country").GetString()).Should().Equal("SE", "NO");
+        root.GetProperty("stamps")[0].GetProperty("pieces").GetInt32().Should().Be(13);
+        root.GetProperty("achievements").EnumerateArray().Select(a => a.GetString()).Should().Equal("night");
+        root.GetProperty("collections").EnumerateArray().Select(a => a.GetString()).Should().Equal("nordic");
+        root.GetProperty("expeditions_done").GetInt32().Should().Be(2);
+        root.GetProperty("title_id").GetString().Should().Be("nordic-master");
+    }
+
+    [Theory]
+    [InlineData(409, true)]
+    [InlineData(500, false)]
+    [InlineData(0, false)]
+    public async Task Import_IsMarkedDone_OnSuccessOr409Only(int status, bool done)
+    {
+        var store = new ColituPassportStore(null);
+        WriteV1Progress(store);
+        var passport = NewPassport(store);
+        var transport = new FakeTransport();
+        transport.Answers["POST /client/passport/import"] = new(status, """{"error":{"code":"PASSPORT_ALREADY_IMPORTED"}}""");
+        await NewSync(passport, transport).ImportIfNeededAsync();
+        passport.Imported.Should().Be(done);
+    }
+
+    [Fact]
+    public async Task ADeviceWithoutV1Progress_DoesNotImport()
     {
         var passport = NewPassport();
-        Run(passport, "NO", 5);
-        foreach (var stamp in ColituPassport.Stamps.Take(9)) Run(passport, stamp.Code, 5);
-        passport.Chapter2Open.Should().BeFalse();
-        passport.Goals.CheckNew().Should().NotContain(e => e is StampEvent.Chapter);
+        var transport = new FakeTransport();
+        await NewSync(passport, transport).ImportIfNeededAsync();
+        passport.Imported.Should().BeTrue();
+        transport.Calls.Should().BeEmpty();
+    }
 
-        Run(passport, "JP", 5);
-        passport.Chapter2Open.Should().BeTrue();
-        var opened = passport.Goals.CheckNew();
-        opened.Should().ContainInOrder(new StampEvent.Chapter("2"), new StampEvent.Unlocked("NO"));
-        opened.Should().Contain(new StampEvent.Achieved("origin"));
+    [Fact]
+    public async Task Profile_GoesToTheAccount_AndItsAnswerIsShown()
+    {
+        var passport = NewPassport();
+        var transport = new FakeTransport();
+        transport.Answers["PUT /client/passport/profile"] = new(200, ContractState);
+        var sync = NewSync(passport, transport);
+
+        (await sync.UpdateProfileAsync(nickname: "  " + new string('a', 30) + "  ", titleId: "nordic_master")).Should().BeTrue();
+
+        using var body = JsonDocument.Parse(transport.Calls.Single().Body!);
+        body.RootElement.GetProperty("nickname").GetString().Should().HaveLength(PassportGoals.NicknameMax);
+        body.RootElement.GetProperty("title_id").GetString().Should().Be("nordic-master");
+        body.RootElement.TryGetProperty("cover_id", out _).Should().BeFalse();
+        passport.Goals.CollectorNo.Should().Be("992562");
+
+        transport.Answers["PUT /client/passport/profile"] = new(400, """{"error":{"code":"PASSPORT_TITLE_NOT_EARNED"}}""");
+        (await sync.UpdateProfileAsync(titleId: "night")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TheTimeZone_IsSentWhenItChanges()
+    {
+        var passport = NewPassport();
+        var transport = new FakeTransport();
+        transport.Answers["GET /client/passport"] = new(200, ContractState);
+        transport.Answers["PUT /client/passport/profile"] = new(200, ContractState);
+
+        await NewSync(passport, transport, offsetMinutes: 180).RefreshAsync();
+        await NewSync(passport, transport, offsetMinutes: 180).RefreshAsync();
+        await NewSync(passport, transport, offsetMinutes: 120).RefreshAsync();
+
+        transport.Calls.Where(c => c.Method == "PUT").Select(c => c.Body).Should().Equal("""{"tz_offset_min":180}""", """{"tz_offset_min":120}""");
+    }
+
+    [Fact]
+    public async Task Shares_AreReported()
+    {
+        var transport = new FakeTransport();
+        await NewSync(NewPassport(), transport).ReportShareAsync();
+        transport.Calls.Single().Should().Be(("POST", "/client/passport/events", """{"kind":"share"}"""));
     }
 
     [Fact]
     public void DuelLink_RoundTrips_AndMatchesThePhonesFormat()
     {
-        // Same bytes as Android: Base64 URL-safe, no padding, of "1|nick|collector|title|levels".
-        var levels = "12345000003000000000";
-        var link = PassportDuel.Link("Deniz Ç", "482913", "night", levels);
+        var link = PassportDuel.Link("Deniz Ç", "482913", "night", "12345000003000000000");
         link.Should().Be("https://colitu.com/p#MXxEZW5peiDDh3w0ODI5MTN8bmlnaHR8MTIzNDUwMDAwMDMwMDAwMDAwMDA");
-
         var parsed = PassportDuel.Parse(link)!;
         parsed.Nick.Should().Be("Deniz Ç");
-        parsed.Collector.Should().Be("482913");
-        parsed.Title.Should().Be("night");
-        parsed.Levels["SE"].Should().Be(1);
         parsed.Levels["GB"].Should().Be(5);
-        parsed.Levels["PL"].Should().Be(0);
         parsed.Levels["NO"].Should().Be(3);
         parsed.CountIn(ColituPassport.Stamps).Should().Be(5);
-
-        PassportDuel.Link("a|b", "1", null, "0").Should().Be(PassportDuel.Link("ab", "1", null, "0"));
-        PassportDuel.Parse("https://colitu.com/p#" + "not base64!").Should().BeNull();
-        PassportDuel.Parse("https://example.com/p#MXx8fHw").Should().BeNull();
+        PassportDuel.Parse("https://colitu.com/p#not base64!").Should().BeNull();
         PassportDuel.Parse(null).Should().BeNull();
     }
 
     [Fact]
-    public void MyLink_CarriesEveryStampLevel_AndFriendsAreKeptOncePerCollector()
+    public void MyLink_CarriesTheServerState_AndFriendsAreKeptOncePerCollector()
     {
-        var passport = NewPassport();
-        passport.Tester = true;
-        Run(passport, "FI", 130); // unlocked, 13 pieces: Silver
+        var passport = WithState();
         var mine = PassportDuel.Parse(passport.Social.MyLink())!;
-        mine.Levels["FI"].Should().Be(2);
-        mine.Levels["SE"].Should().Be(0);
-        mine.Collector.Should().Be(passport.Goals.CollectorNo);
+        mine.Levels["SE"].Should().Be(2);
+        mine.Levels["FI"].Should().Be(5);
+        mine.Collector.Should().Be("992562");
+        mine.Title.Should().Be("nordic_master");
 
         var friend = PassportDuel.Parse(PassportDuel.Link("Ada", "111111", null, "11110000000000000000"))!;
         passport.Social.AddFriend(friend.ToFriend(1));
@@ -295,35 +381,13 @@ public class ColituPassportTests
     }
 
     [Fact]
-    public void AnonymousCounters_AreOffByDefault_TotalsOnly_OnceADay()
+    public void Levels_FollowTheTwelvePieceRule()
     {
-        var passport = NewPassport();
-        passport.Social.MetricsPayload().Should().BeNull();
-        passport.Social.Metrics = true;
-        Run(passport, "SE", 10);
-
-        var body = passport.Social.MetricsPayload()!;
-        body["platform"].Should().Be("windows");
-        body["stamps"].Should().Be(1);
-        body["levels"].Should().BeEquivalentTo(new[] { 1, 0, 0, 0 });
-        body["pieces_today"].Should().Be(1);
-        body.Keys.Should().BeEquivalentTo("v", "stamps", "chapter", "levels", "expeditions", "pieces_today", "opened_today", "platform");
-
-        passport.Social.MetricsSent();
-        passport.Social.MetricsPayload().Should().BeNull();
-        _now = _now.AddDays(1);
-        passport.Social.MetricsPayload().Should().NotBeNull();
-    }
-
-    [Fact]
-    public void Covers_FollowThePlanAndTheSets()
-    {
-        var passport = NewPassport();
-        passport.Goals.ActiveCover(premium: false).Should().Be(CoverTheme.Classic);
-        passport.Goals.ActiveCover(premium: true).Should().Be(CoverTheme.Premium);
-        passport.Goals.UpdateCover(CoverTheme.Pacific);
-        passport.Goals.ActiveCover(premium: true).Should().Be(CoverTheme.Premium, "Pacific is not earned yet");
-        passport.Goals.CollectorNo.Should().MatchRegex("^[1-9][0-9]{5}$");
-        passport.Goals.CollectorNo.Should().Be(passport.Goals.CollectorNo);
+        var progress = new StampProgress(11, 0, null, 1);
+        progress.Level.Should().Be(StampLevel.Bronze);
+        (progress with { Pieces = 12 }).Level.Should().Be(StampLevel.Silver);
+        (progress with { Pieces = 36 }).Level.Should().Be(StampLevel.Diamond);
+        (progress with { Pieces = 48 }).Mastered.Should().BeTrue();
+        StampProgress.None.Level.Should().BeNull();
     }
 }

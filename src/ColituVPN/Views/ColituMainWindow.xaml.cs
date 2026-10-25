@@ -387,6 +387,7 @@ public partial class ColituMainWindow
         ClearInvite();
         HideSurvey();
         ClearNotices();
+        ForgetPassport();
     }
 
     // ── Views and navigation ───────────────────────────────────────────────

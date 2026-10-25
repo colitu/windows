@@ -321,11 +321,7 @@ public partial class ColituMainWindow
                 var chip = new ToggleButtonChip(inUse ? loc["passport.ach.inUse"] : loc["passport.ach.use"], inUse).Create();
                 chip.HorizontalAlignment = HorizontalAlignment.Left;
                 chip.Margin = new Thickness(0, 8, 0, 0);
-                chip.Click += (_, _) =>
-                {
-                    goals.UpdateTitle(inUse ? null : a.Id);
-                    RefreshPassportSheet();
-                };
+                chip.Click += (_, _) => _ = SavePassportProfileAsync(titleId: inUse ? "" : a.Id);
                 text.Children.Add(chip);
             }
             Grid.SetColumn(text, 1);
@@ -390,13 +386,7 @@ public partial class ColituMainWindow
         today.Margin = new Thickness(0, 0, 0, 10);
         panel.Children.Add(today);
         panel.Children.Add(new Border { Height = 1, Background = PassportUi.Line, Margin = new Thickness(0, 4, 0, 6) });
-        panel.Children.Add(PassportUi.SwitchRow(loc["passport.notify"], null, _passport.Notify, on => _passport.Notify = on));
         panel.Children.Add(PassportUi.SwitchRow(loc["passport.set.sound"], null, _passport.Social.Sound, on => _passport.Social.Sound = on));
-        panel.Children.Add(PassportUi.SwitchRow(loc["passport.set.metrics"], loc["passport.set.metricsBody"], _passport.Social.Metrics, on =>
-        {
-            _passport.Social.Metrics = on;
-            if (on) _ = SendPassportMetricsAsync();
-        }));
         var local = PassportUi.Label(loc["passport.local"], 12, PassportUi.Dim);
         local.Margin = new Thickness(0, 10, 0, 0);
         panel.Children.Add(local);
@@ -415,17 +405,6 @@ public partial class ColituMainWindow
         var panel = new StackPanel();
         var art = PassportUi.StampArt(stamp, progress, 196, lockSize: 44, puzzle: true, live: true);
         art.HorizontalAlignment = HorizontalAlignment.Center;
-        if (ColituPassport.DemoEnabled)
-        {
-            // Demo build only: a right click earns one piece (with its animation).
-            art.Background = Brushes.Transparent;
-            art.MouseRightButtonUp += (_, _) =>
-            {
-                _passport.DebugPiece(stamp.Code);
-                RefreshPassportSheet();
-                PollPassportRewards();
-            };
-        }
         panel.Children.Add(art);
         var head = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) };
         head.Children.Add(PassportUi.Label(country, 22, PassportUi.Text, FontWeights.SemiBold, wrap: false));
@@ -520,7 +499,7 @@ public partial class ColituMainWindow
         {
             if (_passportNickDraft.Trim() != _passport.Goals.Nickname)
             {
-                _passport.Goals.UpdateNickname(_passportNickDraft);
+                _ = SavePassportProfileAsync(nickname: _passportNickDraft);
             }
         });
     }
@@ -567,7 +546,7 @@ public partial class ColituMainWindow
         var nick = new TextBox
         {
             Text = _passportNickDraft,
-            MaxLength = 20,
+            MaxLength = PassportGoals.NicknameMax,
             Style = (Style)FindResource("Field"),
             FocusVisualStyle = (Style)FindResource("PassportFocus"),
             Tag = loc["passport.id.nickHint"]
@@ -581,7 +560,7 @@ public partial class ColituMainWindow
         };
         nick.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Enter) goals.UpdateNickname(nick.Text);
+            if (e.Key == Key.Enter) _ = SavePassportProfileAsync(nickname: nick.Text);
         };
         panel.Children.Add(nick);
 
@@ -614,11 +593,7 @@ public partial class ColituMainWindow
             column.Children.Add(PassportUi.Label(name, 12, selected ? PassportUi.Lilac : PassportUi.Text, align: TextAlignment.Center, wrap: false));
             var requirement = unlocked ? null : CoverRequirement(theme);
             if (requirement != null) column.Children.Add(PassportUi.Label(requirement, 10.5, PassportUi.Dim, align: TextAlignment.Center));
-            var button = PassportUi.Plain(column, () =>
-            {
-                goals.UpdateCover(theme);
-                RefreshPassportSheet();
-            }, requirement == null ? name : $"{name} · {requirement}");
+            var button = PassportUi.Plain(column, () => _ = SavePassportProfileAsync(coverId: theme.Key()), requirement == null ? name : $"{name} · {requirement}");
             button.IsEnabled = unlocked;
             button.Margin = new Thickness(0, 0, 10, 10);
             button.Padding = new Thickness(0);
@@ -644,8 +619,7 @@ public partial class ColituMainWindow
             chip.Checked += (_, _) =>
             {
                 if (goals.Title == id) return;
-                goals.UpdateTitle(id);
-                RefreshPassportSheet();
+                _ = SavePassportProfileAsync(titleId: id ?? "");
             };
             titles.Children.Add(chip);
         }
@@ -699,6 +673,19 @@ public partial class ColituMainWindow
     {
         if (theme == CoverTheme.Premium) return Loc.I["passport.req.premium"];
         return PassportCollection.All.FirstOrDefault(c => c.Cover == theme) is { } set ? Loc.I.Format("passport.req.set", ("set", set.Title)) : null;
+    }
+
+    /// <summary>Saves a name, title or cover to the account; the panel's answer becomes the shown state.</summary>
+    private async Task SavePassportProfileAsync(string? nickname = null, string? titleId = null, string? coverId = null)
+    {
+        var saved = await PassportSync.UpdateProfileAsync(nickname, titleId, coverId);
+        if (!saved)
+        {
+            ShowToast(Loc.I["passport.saveFailed"], true);
+        }
+        RefreshPassportSheet();
+        if (PassportSheetLayer.Visibility != Visibility.Visible && _page == "passport") RenderPassport();
+        ApplyPassportHome();
     }
 
     // ── Passport comparison ────────────────────────────────────────────────

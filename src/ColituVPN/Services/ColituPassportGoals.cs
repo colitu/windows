@@ -63,61 +63,27 @@ public sealed record PassportCollection(string Id, string Title, IReadOnlyList<s
 }
 
 /// <summary>
-/// Achievements, collections and the passport identity (nickname, collector number, favourite
-/// stamp, title, cover). All on the device, like the stamps.
+/// Achievements, collections and the passport identity as the server reports them. The favourite
+/// stamp stays on this device (a view choice); name, title and cover are saved to the account.
 /// </summary>
 public sealed class PassportGoals(ColituPassport passport)
 {
     public const int GoldRushCount = 3;
     public const int DiamondCount = 3;
+    public const int NicknameMax = 24;
 
     private ColituPassportStore Store => passport.Store;
+    private PassportState State => passport.State;
 
-    public string Nickname => Store.GetString("nick") ?? "";
+    public string Nickname => State.Nickname ?? "";
+    public string? Title => string.IsNullOrWhiteSpace(State.TitleId) ? null : PassportIds.Normalize(State.TitleId);
+    public CoverTheme? Cover => CoverThemes.FromKey(PassportIds.Normalize(State.CoverId));
     public string? Favorite => Store.GetString("favorite");
-    public string? Title => Store.GetString("title");
-    public CoverTheme? Cover => CoverThemes.FromKey(Store.GetString("cover"));
 
-    /// <summary>Six digits made on this device, not tied to the account.</summary>
-    public string CollectorNo
-    {
-        get
-        {
-            var saved = Store.GetString("collector_no");
-            if (saved != null) return saved;
-            var made = Random.Shared.Next(100_000, 1_000_000).ToString(CultureInfo.InvariantCulture);
-            Store.Set("collector_no", made);
-            return made;
-        }
-    }
-
-    public void UpdateNickname(string value)
-    {
-        var nick = value.Trim();
-        Store.Set("nick", nick.Length == 0 ? null : nick[..Math.Min(20, nick.Length)]);
-    }
+    /// <summary>Six digits the server gave this account ("000000" until the first answer).</summary>
+    public string CollectorNo => string.IsNullOrWhiteSpace(State.CollectorNo) ? "000000" : State.CollectorNo!;
 
     public void UpdateFavorite(string? code) => Store.Set("favorite", code);
-
-    public void UpdateTitle(string? id)
-    {
-        Store.Set("title", id);
-        passport.Weekly.Bump(ExpeditionGoal.Customize);
-    }
-
-    public void UpdateCover(CoverTheme? theme)
-    {
-        Store.Set("cover", theme?.Key());
-        passport.Weekly.Bump(ExpeditionGoal.Customize);
-    }
-
-    /// <summary>Every country with a record: this chapter, the sets and whatever the tick saw.</summary>
-    private IEnumerable<string> AllCodes() =>
-        ColituPassport.Stamps.Select(s => s.Code)
-            .Concat(PassportCollection.All.SelectMany(c => c.Codes))
-            .Concat(passport.SeenCodes)
-            .Where(code => code.Length == 2)
-            .Distinct();
 
     /// <summary>Stamps of <paramref name="chapter"/> at <paramref name="level"/> or higher (Chapter 03 — Legacy).</summary>
     public int Legacy(StampLevel level, IEnumerable<ColituStamp> chapter) =>
@@ -126,43 +92,35 @@ public sealed class PassportGoals(ColituPassport passport)
     /// <summary>Chapter 03 opens with Chapter 02 complete.</summary>
     public bool Chapter3Open => passport.CountIn(ColituPassport.Chapter2) == ColituPassport.Chapter2.Count;
 
-    private int CountAtLeast(StampLevel level) => AllCodes().Count(code => passport.ProgressOf(code).Level is { } l && l >= level);
+    private int CountAtLeast(StampLevel level) => ColituPassport.AllStamps.Count(s => passport.ProgressOf(s.Code).Level is { } l && l >= level);
 
-    public bool Achieved(PassportAchievement a)
+    public bool Achieved(PassportAchievement a) => State.Achievements.Any(e => PassportIds.Normalize(e.Id) == a.Id);
+
+    /// <summary>Stamps of the set already collected, and how many it needs (for the list; the server decides completion).</summary>
+    public (int Have, int Need) Progress(PassportCollection c)
     {
-        if (a == PassportAchievement.First) return AllCodes().Any(passport.UnlockedAnywhere);
-        if (a == PassportAchievement.Origin) return ColituPassport.Stamps.All(s => passport.UnlockedAnywhere(s.Code));
-        if (a == PassportAchievement.NordicMaster) return PassportCollection.Nordic.Codes.All(code => passport.ProgressOf(code).Level is { } l && l >= StampLevel.Gold);
-        if (a == PassportAchievement.Diamond) return CountAtLeast(StampLevel.Diamond) >= DiamondCount;
-        if (a == PassportAchievement.Pathfinder) return passport.Weekly.Total >= PassportWeekly.PathfinderAt;
-        if (a == PassportAchievement.LegacyGold) return Legacy(StampLevel.Gold, ColituPassport.Stamps) >= ColituPassport.Stamps.Count;
-        if (a == PassportAchievement.LegacyDiamond) return Legacy(StampLevel.Diamond, ColituPassport.Stamps) >= ColituPassport.Stamps.Count;
-        return Store.GetLong($"a_{a.Id}") > 0;
+        var shown = c == PassportCollection.GoldRush
+            ? (Math.Min(CountAtLeast(StampLevel.Gold), GoldRushCount), GoldRushCount)
+            : (c.Codes.Count(passport.UnlockedAnywhere), c.Codes.Count);
+        return Completed(c) ? (shown.Item2, shown.Item2) : shown;
     }
 
-    /// <summary>Stamps of the set already collected, and how many it needs.</summary>
-    public (int Have, int Need) Progress(PassportCollection c) => c == PassportCollection.GoldRush
-        ? (Math.Min(CountAtLeast(StampLevel.Gold), GoldRushCount), GoldRushCount)
-        : (c.Codes.Count(passport.UnlockedAnywhere), c.Codes.Count);
+    public bool Completed(PassportCollection c) => State.Collections.Any(e => PassportIds.Normalize(e.Id) == c.Id);
 
-    public bool Completed(PassportCollection c)
+    /// <summary>When the set ("c_nordic") or achievement ("a_first") was earned (0 when not yet).</summary>
+    public long EarnedAt(string key)
     {
-        var (have, need) = Progress(c);
-        return have >= need;
+        var list = key.StartsWith("c_", StringComparison.Ordinal) ? State.Collections : State.Achievements;
+        var id = key.Length > 2 ? key[2..] : key;
+        return list.FirstOrDefault(e => PassportIds.Normalize(e.Id) == id)?.EarnedAt?.ToUnixTimeMilliseconds() ?? 0;
     }
 
-    /// <summary>When the set or achievement was first seen complete (0 when not yet).</summary>
-    public long EarnedAt(string key) => Store.GetLong($"seen_{key}");
-
-    /// <summary>Covers this user may pick.</summary>
+    /// <summary>Covers this account may pick (the server's list; Classic always).</summary>
     public IReadOnlyList<CoverTheme> Covers(bool premium)
     {
-        var list = new List<CoverTheme> { CoverTheme.Classic };
-        if (premium) list.Add(CoverTheme.Premium);
-        foreach (var c in PassportCollection.All)
-        {
-            if (c.Cover is { } cover && Completed(c)) list.Add(cover);
-        }
+        var list = State.Covers.Select(k => CoverThemes.FromKey(PassportIds.Normalize(k))).OfType<CoverTheme>().ToList();
+        if (!list.Contains(CoverTheme.Classic)) list.Insert(0, CoverTheme.Classic);
+        if ((premium || State.Premium) && !list.Contains(CoverTheme.Premium)) list.Insert(1, CoverTheme.Premium);
         return list;
     }
 
@@ -170,53 +128,10 @@ public sealed class PassportGoals(ColituPassport passport)
     public CoverTheme ActiveCover(bool premium)
     {
         var allowed = Covers(premium);
-        return Cover is { } chosen && allowed.Contains(chosen) ? chosen : premium ? CoverTheme.Premium : CoverTheme.Classic;
+        return Cover is { } chosen && allowed.Contains(chosen) ? chosen : premium || State.Premium ? CoverTheme.Premium : CoverTheme.Classic;
     }
 
     public string? TitleOf(string? id) => PassportAchievement.Of(id) is { } a && Achieved(a) ? a.Title : null;
-
-    /// <summary>Ring around the avatar: Diamond with Diamond Collector, gold with any Gold stamp.</summary>
-    public StampLevel? AvatarFrame() =>
-        Achieved(PassportAchievement.Diamond) ? StampLevel.Diamond : CountAtLeast(StampLevel.Gold) > 0 ? StampLevel.Gold : null;
-
-    /// <summary>
-    /// Chapters, expeditions, sets and achievements reached since the last call, each once (the app
-    /// plays their reveal). Chapter 02 opening also replays the stamps of its countries recorded so far.
-    /// </summary>
-    public IReadOnlyList<StampEvent> CheckNew()
-    {
-        var now = passport.NowMillis;
-        var list = new List<StampEvent>();
-        if (passport.Chapter2Open && EarnedAt("ch_2") == 0)
-        {
-            Store.Set("seen_ch_2", now);
-            list.Add(new StampEvent.Chapter("2"));
-            list.AddRange(ColituPassport.Chapter2.Where(s => passport.UnlockedAnywhere(s.Code)).Select(s => new StampEvent.Unlocked(s.Code)));
-        }
-        if (Chapter3Open && EarnedAt("ch_3") == 0)
-        {
-            Store.Set("seen_ch_3", now);
-            list.Add(new StampEvent.Chapter("3"));
-        }
-        list.AddRange(passport.Weekly.TakeNewlyDone().Select(goal => new StampEvent.Expedition(goal.Id)));
-        foreach (var c in PassportCollection.All)
-        {
-            if (Completed(c) && EarnedAt($"c_{c.Id}") == 0)
-            {
-                Store.Set($"seen_c_{c.Id}", now);
-                list.Add(new StampEvent.Collected(c.Id));
-            }
-        }
-        foreach (var a in PassportAchievement.All)
-        {
-            if (Achieved(a) && EarnedAt($"a_{a.Id}") == 0)
-            {
-                Store.Set($"seen_a_{a.Id}", now);
-                list.Add(new StampEvent.Achieved(a.Id));
-            }
-        }
-        return list;
-    }
 }
 
 /// <summary>One kind of weekly expedition and how many steps it takes.</summary>
@@ -235,22 +150,20 @@ public sealed record ExpeditionGoal(string Id, int Target)
 }
 
 /// <summary>
-/// Weekly expeditions: three small goals a week, picked by a fixed rotation on the ISO week
-/// number (no randomness). Missing a week costs nothing; rewards are cosmetic visa stamps and,
-/// after five, the Pathfinder title.
+/// Weekly expeditions as the server counts them: three goals per ISO week, the same rotation as
+/// the phones. The app only reports shares (cosmetic). Missing a week costs nothing.
 /// </summary>
 public sealed class PassportWeekly(ColituPassport passport)
 {
     public const int PathfinderAt = 5;
 
-    private ColituPassportStore Store => passport.Store;
-
     public static string WeekKey(DateTime date) =>
         $"{ISOWeek.GetYear(date)}-W{ISOWeek.GetWeekOfYear(date)}";
 
-    public string WeekKey() => WeekKey(passport.Now);
+    /// <summary>The server's week ("2026-W43"), else this week's key.</summary>
+    public string WeekKey() => passport.State.Weekly?.Week ?? WeekKey(passport.Now);
 
-    /// <summary>The three goals of the week of <paramref name="date"/> (same rotation as the phones).</summary>
+    /// <summary>The three goals of the week of <paramref name="date"/> (the rotation the server uses too).</summary>
     public static IReadOnlyList<ExpeditionGoal> GoalsOf(DateTime date)
     {
         var week = ISOWeek.GetYear(date) * 53 + ISOWeek.GetWeekOfYear(date);
@@ -258,44 +171,23 @@ public sealed class PassportWeekly(ColituPassport passport)
         return Enumerable.Range(0, 3).Select(i => all[(week * 3 + i) % all.Count]).ToList();
     }
 
-    public IReadOnlyList<ExpeditionGoal> Goals() => GoalsOf(passport.Now);
+    private PassportWeekGoal? Dto(ExpeditionGoal goal) => passport.State.Weekly?.Goals.FirstOrDefault(g => PassportIds.Normalize(g.Id) == goal.Id);
 
-    private void SyncWeek()
+    /// <summary>This week's goals from the server; the local rotation until it answered.</summary>
+    public IReadOnlyList<ExpeditionGoal> Goals()
     {
-        var key = WeekKey();
-        if (Store.GetString("wk_key") != key)
-        {
-            foreach (var goal in ExpeditionGoal.All) Store.Remove($"wk_{goal.Id}");
-            Store.Set("wk_key", key);
-        }
+        var server = passport.State.Weekly?.Goals.Select(g => ExpeditionGoal.Of(PassportIds.Normalize(g.Id))).OfType<ExpeditionGoal>().ToList();
+        return server is { Count: > 0 } ? server : GoalsOf(passport.Now);
     }
 
-    public int Progress(ExpeditionGoal goal) => Store.GetString("wk_key") != WeekKey() ? 0 : Store.GetInt($"wk_{goal.Id}");
+    public int Progress(ExpeditionGoal goal) => Dto(goal)?.Progress ?? 0;
 
-    /// <summary>One step towards <paramref name="goal"/>; counts only while it is one of this week's goals.</summary>
-    public void Bump(ExpeditionGoal goal)
-    {
-        SyncWeek();
-        if (Goals().Contains(goal)) Store.Set($"wk_{goal.Id}", Store.GetInt($"wk_{goal.Id}") + 1);
-    }
+    public int Target(ExpeditionGoal goal) => Dto(goal)?.Target is > 0 and var t ? t : goal.Target;
 
-    public bool Done(ExpeditionGoal goal) => Progress(goal) >= goal.Target;
+    public bool Done(ExpeditionGoal goal) => Dto(goal) is { } d && (d.Done || d.Progress >= Target(goal));
 
     /// <summary>Expeditions finished over all weeks.</summary>
-    public int Total => Store.GetInt("expeditions_done");
-
-    /// <summary>Goals of this week finished since the last call, each once.</summary>
-    internal IReadOnlyList<ExpeditionGoal> TakeNewlyDone()
-    {
-        var key = WeekKey();
-        var done = Goals().Where(goal => Done(goal) && !Store.GetBool($"x_{key}_{goal.Id}")).ToList();
-        foreach (var goal in done)
-        {
-            Store.Set($"x_{key}_{goal.Id}", true);
-            Store.Set("expeditions_done", Total + 1);
-        }
-        return done;
-    }
+    public int Total => passport.State.ExpeditionsDone;
 }
 
 /// <summary>A friend's passport as read from their link (no account data, only what their share card shows).</summary>
@@ -360,7 +252,7 @@ public static class PassportDuel
     }
 }
 
-/// <summary>Friends, the Companion stamp and the passport's own settings. Everything stays on this device.</summary>
+/// <summary>Friends, the Companion stamp and the passport's view settings. Friends and settings stay on this device.</summary>
 public sealed class PassportSocial(ColituPassport passport)
 {
     public const string Companion = "companion";
@@ -370,10 +262,10 @@ public sealed class PassportSocial(ColituPassport passport)
     public bool ShowRanking { get => Store.GetBool("friends_ranking", true); set => Store.Set("friends_ranking", value); }
     public bool Sound { get => Store.GetBool("sound", true); set => Store.Set("sound", value); }
 
-    /// <summary>Whether the first-visit intro has been shown.</summary>
+    /// <summary>Whether the first-visit intro has been shown on this device.</summary>
     public bool IntroSeen { get => Store.GetBool("intro_seen"); set => Store.Set("intro_seen", value); }
 
-    /// <summary>My passport as a duel link.</summary>
+    /// <summary>My passport as a duel link (the server state this app shows).</summary>
     public string MyLink()
     {
         var levels = string.Concat(ColituPassport.AllStamps.Select(s => passport.ProgressOf(s.Code).DuelLevel.ToString(CultureInfo.InvariantCulture)));
@@ -424,39 +316,6 @@ public sealed class PassportSocial(ColituPassport passport)
         }
     }
 
-    /// <summary>Optional anonymous counters (off by default).</summary>
-    public bool Metrics { get => Store.GetBool("metrics"); set => Store.Set("metrics", value); }
-
-    /// <summary>
-    /// Today's counters for POST /passport/metrics, once a day and only when turned on; null when off
-    /// or already sent today. Totals only: no account, device or connection data.
-    /// </summary>
-    public Dictionary<string, object>? MetricsPayload()
-    {
-        if (!Metrics || Store.GetString("metrics_day") == passport.Day) return null;
-        var progress = passport.Progress.Values.ToList();
-        return new Dictionary<string, object>
-        {
-            ["v"] = 1,
-            ["stamps"] = progress.Count,
-            ["chapter"] = passport.Goals.Chapter3Open ? 3 : passport.Chapter2Open ? 2 : 1,
-            ["levels"] = StampLevels.All.Select(level => progress.Count(p => p.Level == level)).ToArray(),
-            ["expeditions"] = passport.Weekly.Total,
-            ["pieces_today"] = Math.Clamp(passport.Today.Pieces, 0, 2),
-            ["opened_today"] = true,
-            ["platform"] = "windows"
-        };
-    }
-
-    public void MetricsSent() => Store.Set("metrics_day", passport.Day);
-
-    public bool HasCompanion => Store.GetLong($"special_{Companion}") > 0;
-
-    /// <summary>The Companion stamp: whoever signed up with an invite code and whoever invited someone. Queued for its reveal.</summary>
-    public void MarkCompanion()
-    {
-        if (HasCompanion) return;
-        Store.Set($"special_{Companion}", passport.NowMillis);
-        passport.Enqueue([new StampEvent.Special(Companion)]);
-    }
+    /// <summary>The Companion stamp (granted by the server from the referral data).</summary>
+    public bool HasCompanion => passport.State.Companion;
 }

@@ -8,33 +8,50 @@ using v2rayN.Services;
 namespace v2rayN.Views;
 
 /// <summary>
-/// Colitu Passport page and its home card (colitu-android screens/PassportHome.kt). The minute
-/// tick runs here while the tunnel is up, also with the window hidden in the tray; the rewards
-/// wait in the passport's queue until the window can show them.
+/// Colitu Passport page and its home card (colitu-android screens/PassportHome.kt). The passport
+/// lives on the server (docs/passport-server.md): the app refreshes it when the window becomes
+/// active, when the page opens (then every minute while it is open and connected) and after a
+/// connect, plays the reveals for the server's unseen events and acks them.
 /// </summary>
 public partial class ColituMainWindow
 {
     private readonly ColituPassport _passport = ColituPassport.Instance;
-    private DispatcherTimer? _passportTick;
+    private ColituPassportSync? _passportSync;
+    private DispatcherTimer? _passportRefreshTimer;
     private int _passportChapter = 1;
-    private bool _passportCompanionChecked;
 
     private bool PassportPremium => _auth.CurrentSubscription?.Active == true;
 
+    private ColituPassportSync PassportSync => _passportSync ??=
+        new ColituPassportSync(_passport, new ColituAuthPassportTransport(_auth), () => _auth.RegisteredDeviceId);
+
     private void InitPassport()
     {
-        _passportTick = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMinutes(1) };
-        _passportTick.Tick += (_, _) => OnPassportMinute();
-        _passportTick.Start();
         InitPassportReveals();
-        _vpn.StatusChanged += _ => Dispatcher.BeginInvoke(() =>
+        _passportRefreshTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMinutes(1) };
+        _passportRefreshTimer.Tick += (_, _) =>
         {
-            if (_vpn.Status == ColituVpnStatus.Connected && _vpn.ConnectedServer is { } server)
+            if (_page == "passport" && IsVisible && _vpn.Status == ColituVpnStatus.Connected)
+            {
+                _ = RefreshPassportAsync();
+            }
+        };
+        _passportRefreshTimer.Start();
+        _vpn.StatusChanged += status => Dispatcher.BeginInvoke(() =>
+        {
+            if (status == ColituVpnStatus.Connected && _vpn.ConnectedServer is { } server)
             {
                 _passport.RememberCity(PassportCountry(server), server.IsMultihop ? server.Exit?.City : server.City);
+                _ = RefreshPassportAsync();
             }
             ApplyPassportHome();
         });
+        Activated += (_, _) => _ = RefreshPassportAsync();
+        // Signed in (app start, sign-in, back from verification): import once and fetch the passport.
+        AppView.IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is true) _ = RefreshPassportAsync(force: true);
+        };
         Loc.I.Changed += () =>
         {
             ApplyPassportHome();
@@ -47,95 +64,57 @@ public partial class ColituMainWindow
         ApplyPassportHome();
     }
 
-    /// <summary>The country a tunnel counts for: the exit of a multihop route, else the server's own.</summary>
+    /// <summary>The country of a tunnel (for the city under a stamp): the exit of a multihop route, else the server's own.</summary>
     private static string? PassportCountry(ColituVpnServer server) =>
         server.IsMultihop ? server.Exit?.Country ?? server.CountryCode : server.CountryCode;
 
-    /// <summary>One minute of the running tunnel (the same <see cref="ColituPassport.Tick"/> as the phones).</summary>
-    private void OnPassportMinute()
+    private DateTime _passportRefreshedAt = DateTime.MinValue;
+
+    /// <summary>Sign-out: drop the account's cached passport and any rewards still waiting to be played.</summary>
+    private void ForgetPassport()
     {
+        _passport.ForgetAccount();
+        _revealQueue.Clear();
+        _revealIds.Clear();
+        _revealQueuedThrough = 0;
+        _passportRefreshedAt = DateTime.MinValue;
+        ApplyPassportHome();
+    }
+
+    /// <summary>
+    /// Fetches the account's passport (and does the one-time import of this device's v1 progress);
+    /// new events go to the reveal queue. Offline, or before the server offers it, the cached state stays.
+    /// </summary>
+    private async Task RefreshPassportAsync(bool force = false)
+    {
+        if (!_auth.HasSession || AppView.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+        // Activations come in bursts (tray, dialogs): at most one refresh every 15 s unless asked.
+        if (!force && DateTime.UtcNow - _passportRefreshedAt < TimeSpan.FromSeconds(15))
+        {
+            return;
+        }
+        _passportRefreshedAt = DateTime.UtcNow;
         try
         {
-            if (_servers.Count > 0)
-            {
-                // Tester accounts see the panel's alpha nodes: no daily cap for them.
-                _passport.Tester = _servers.Any(server => server.Alpha);
-            }
-            if (_vpn.Status != ColituVpnStatus.Connected || _vpn.ConnectedServer is not { } server)
+            var events = await PassportSync.RefreshAsync();
+            if (events == null)
             {
                 return;
             }
-            _ = SendPassportMetricsAsync();
-            var events = _passport.Tick(PassportCountry(server));
-            if (events.Count > 0)
-            {
-                NotifyPassport(events);
-            }
+            QueuePassportEvents(events);
             ApplyPassportHome();
-            if (_page == "passport" && PassportSheetLayer.Visibility != Visibility.Visible)
+            if (_page == "passport" && PassportSheetLayer.Visibility != Visibility.Visible && !_revealShowing)
             {
                 RenderPassport();
             }
+            PollPassportRewards();
         }
         catch (Exception ex)
         {
-            Logging.SaveLog("ColituMainWindow.OnPassportMinute", ex);
-        }
-    }
-
-    private bool _passportMetricsSending;
-
-    /// <summary>The optional anonymous counters, once a day while signed in (off unless the user turned them on).</summary>
-    private async Task SendPassportMetricsAsync()
-    {
-        if (_passportMetricsSending || !_auth.HasSession || _passport.Social.MetricsPayload() is not { } body)
-        {
-            return;
-        }
-        _passportMetricsSending = true;
-        try
-        {
-            if (await _auth.PostPassportMetricsAsync(body))
-            {
-                _passport.Social.MetricsSent();
-            }
-        }
-        finally
-        {
-            _passportMetricsSending = false;
-        }
-    }
-
-    /// <summary>Tray notification while the window is hidden; the biggest news of the minute only.</summary>
-    private void NotifyPassport(IReadOnlyList<StampEvent> events)
-    {
-        if (!_passport.Notify || (IsVisible && WindowState != WindowState.Minimized))
-        {
-            return;
-        }
-        var e = events.FirstOrDefault(x => x is StampEvent.Mastered or StampEvent.LevelUp)
-            ?? events.FirstOrDefault(x => x is StampEvent.Unlocked)
-            ?? events[0];
-        var loc = Loc.I;
-        var country = PassportUi.Country(e.Code);
-        var (title, body) = e switch
-        {
-            StampEvent.Unlocked => (loc.Format("passport.n.unlockedTitle", ("country", country)), loc["passport.n.unlockedBody"]),
-            StampEvent.Piece piece => (loc.Format("passport.n.pieceTitle", ("country", country)), loc.Format("passport.pieces", ("n", piece.LevelPieces))),
-            StampEvent.LevelUp up => (loc.Format("passport.levelUp", ("country", country), ("level", PassportUi.LevelName(up.Level))), loc["passport.n.levelBody"]),
-            StampEvent.Mastered => (loc.Format("passport.mastered", ("country", country)), loc["passport.n.levelBody"]),
-            _ => ("", "")
-        };
-        if (title.Length > 0)
-        {
-            try
-            {
-                TrayIcon.ShowNotification(title, body);
-            }
-            catch (Exception ex)
-            {
-                Logging.SaveLog("ColituMainWindow.NotifyPassport", ex);
-            }
+            Logging.SaveLog("ColituMainWindow.RefreshPassportAsync", ex);
         }
     }
 
@@ -203,7 +182,7 @@ public partial class ColituMainWindow
 
     private void PassportHow_Click(object sender, RoutedEventArgs e) => OpenHowSheet();
 
-    /// <summary>Opening the page: build it, the first-visit intro, and a quiet check for the Companion stamp.</summary>
+    /// <summary>Opening the page: build it from the cached state, show the first-visit intro and refresh it from the server.</summary>
     private void OnPassportOpened()
     {
         RenderPassport();
@@ -217,30 +196,7 @@ public partial class ColituMainWindow
         {
             ShowPassportIntro();
         }
-        _ = CheckCompanionAsync();
-        _ = SendPassportMetricsAsync();
-    }
-
-    /// <summary>Whoever invited someone earns the Companion stamp (the invite page's numbers, read once a session).</summary>
-    private async Task CheckCompanionAsync()
-    {
-        if (_passportCompanionChecked || _passport.Social.HasCompanion || !_auth.HasSession)
-        {
-            return;
-        }
-        _passportCompanionChecked = true;
-        try
-        {
-            var info = _invite ?? await ColituReferralService.Instance.LoadAsync();
-            if (info.Invited > 0)
-            {
-                _passport.Social.MarkCompanion();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logging.SaveLog("ColituMainWindow.CheckCompanionAsync", ex);
-        }
+        _ = RefreshPassportAsync(force: true);
     }
 
     private void RenderPassport()
@@ -289,15 +245,6 @@ public partial class ColituMainWindow
         hero.Children.Add(PassportUi.Cover(_passport.Goals.ActiveCover(PassportPremium), coverHeight));
         var heroButton = PassportUi.Plain(hero, OpenIdentitySheet, loc["passport.id.edit"]);
         heroButton.HorizontalAlignment = HorizontalAlignment.Center;
-        if (ColituPassport.DemoEnabled)
-        {
-            // Demo build only (COLITU_PASSPORT_DEMO=1): a right click fills a demo passport, a second one empties it.
-            heroButton.MouseRightButtonUp += (_, _) =>
-            {
-                _passport.DebugCycle();
-                RenderPassport();
-            };
-        }
         PassportLeft.Children.Add(heroButton);
 
         var numbers = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0), FontSize = 34, FontWeight = FontWeights.Bold };
@@ -324,7 +271,7 @@ public partial class ColituMainWindow
         PassportLeft.Children.Add(tiles);
 
         var note = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) };
-        note.Children.Add(PassportUi.Icon("lock", PassportUi.Dim, 12));
+        note.Children.Add(PassportUi.Icon("shield", PassportUi.Dim, 12));
         var noteText = PassportUi.Label(loc["passport.local"], 11.5, PassportUi.Dim);
         noteText.MaxWidth = 270;
         noteText.Margin = new Thickness(6, 0, 0, 0);

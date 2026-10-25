@@ -18,6 +18,9 @@ namespace v2rayN.Views;
 public partial class ColituMainWindow
 {
     private readonly List<StampEvent> _revealQueue = [];
+    /// <summary>Server id of each queued reward (same order as <see cref="_revealQueue"/>), acked once it was shown.</summary>
+    private readonly List<long> _revealIds = [];
+    private long _revealQueuedThrough;
     private DispatcherTimer? _revealPoll;
     private bool _revealShowing;
     private Action? _revealDone;
@@ -30,7 +33,23 @@ public partial class ColituMainWindow
         _revealPoll.Start();
     }
 
-    /// <summary>Takes what the tick queued (and newly reached goals) while the window is on screen, and plays it.</summary>
+    /// <summary>Adds the server's unseen events (oldest first) that are not queued yet; unknown kinds are acked silently.</summary>
+    private void QueuePassportEvents(IReadOnlyList<PassportServerEvent> events)
+    {
+        foreach (var e in events.Where(e => e.Id > _revealQueuedThrough))
+        {
+            _revealQueuedThrough = e.Id;
+            if (e.Event == null)
+            {
+                _ = PassportSync.AckAsync(e.Id);
+                continue;
+            }
+            _revealQueue.Add(e.Event);
+            _revealIds.Add(e.Id);
+        }
+    }
+
+    /// <summary>Plays the queued rewards while the window is on screen.</summary>
     private void PollPassportRewards()
     {
         try
@@ -39,11 +58,6 @@ public partial class ColituMainWindow
                 || UpdatePrompt.Visibility == Visibility.Visible || TunPrompt.Visibility == Visibility.Visible)
             {
                 return;
-            }
-            if (_revealQueue.Count == 0)
-            {
-                _revealQueue.AddRange(_passport.TakePending());
-                _revealQueue.AddRange(_passport.Goals.CheckNew());
             }
             if (_revealQueue.Count > 0)
             {
@@ -65,7 +79,7 @@ public partial class ColituMainWindow
             if (e is StampEvent.Unlocked && ColituPassport.Chapter2.Any(s => s.Code == e.Code) && !_passport.Chapter2Open
                 || e is StampEvent.Unlocked or StampEvent.Piece or StampEvent.LevelUp or StampEvent.Mastered && ColituPassport.StampOf(e.Code) == null)
             {
-                _revealQueue.RemoveAt(0);
+                DropRevealHead(ack: true);
                 continue;
             }
             break;
@@ -76,10 +90,7 @@ public partial class ColituMainWindow
         }
         var next = _revealQueue[0];
         _revealShowing = true;
-        _revealDone = () =>
-        {
-            if (_revealQueue.Count > 0) _revealQueue.RemoveAt(0);
-        };
+        _revealDone = () => DropRevealHead(ack: true);
         PassportRevealLayer.Children.Clear();
         PassportRevealLayer.Visibility = Visibility.Visible;
         try
@@ -114,6 +125,17 @@ public partial class ColituMainWindow
             Logging.SaveLog("ColituMainWindow.ShowNextReveal", ex);
             FinishReveal();
         }
+    }
+
+    /// <summary>Removes the first queued reward; acks it on the server so no other device plays it again.</summary>
+    private void DropRevealHead(bool ack)
+    {
+        if (_revealQueue.Count == 0) return;
+        _revealQueue.RemoveAt(0);
+        if (_revealIds.Count == 0) return;
+        var id = _revealIds[0];
+        _revealIds.RemoveAt(0);
+        if (ack) _ = PassportSync.AckAsync(id);
     }
 
     /// <summary>Closes the current reward and moves on to the next one.</summary>
@@ -501,7 +523,7 @@ public partial class ColituMainWindow
         {
             buttons.Add((loc["passport.r.useCover"], () =>
             {
-                _passport.Goals.UpdateCover(useCover);
+                _ = SavePassportProfileAsync(coverId: useCover.Key());
                 FinishReveal();
             }, true));
         }
@@ -567,7 +589,7 @@ public partial class ColituMainWindow
         column.Children.Add(RevealButtons(1.6,
             (loc["passport.ach.use"], () =>
             {
-                _passport.Goals.UpdateTitle(a.Id);
+                _ = SavePassportProfileAsync(titleId: a.Id);
                 FinishReveal();
             }, true),
             (loc["passport.r.great"], FinishReveal, false)));
@@ -846,7 +868,7 @@ public partial class ColituMainWindow
             {
                 Logging.SaveLog("ColituMainWindow.SharePassportCard clipboard", ex);
             }
-            _passport.Weekly.Bump(ExpeditionGoal.Share);
+            _ = PassportSync.ReportShareAsync();
             ShowToast(loc["passport.shareSaved"]);
         }
         catch (Exception ex)
