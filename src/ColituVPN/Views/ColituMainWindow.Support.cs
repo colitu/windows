@@ -604,6 +604,9 @@ public partial class ColituMainWindow
                 SelectionBrush = (Brush)FindResource("VioletBrush")
             };
             text.Template = PlainTextTemplate();
+            // Read-only text field: named by its sender for screen readers (the text is its value).
+            System.Windows.Automation.AutomationProperties.SetName(text, mine ? Loc.I["a11y.you"]
+                : message.Sender == "bot" ? "Colitu Bot" : Loc.I["support.team"]);
             body.Children.Add(text);
         }
         foreach (var attachment in message.Attachments ?? [])

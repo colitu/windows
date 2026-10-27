@@ -77,9 +77,6 @@ public partial class ColituMainWindow
         Activated += async (_, _) => await AnswerDiagnosticsRequestAsync();
         Root.SizeChanged += (_, _) => UpdateRootClip();
         HeaderBar.SizeChanged += (_, _) => FitNav();
-        HomeLeftScroll.SizeChanged += (_, _) => FitHomeOrb();
-        HomeStatus.SizeChanged += (_, _) => FitHomeOrb();
-        HomeQuick.SizeChanged += (_, _) => FitHomeOrb();
 
         BuildLanguageSelectors();
         InitPassport();

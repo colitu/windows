@@ -240,6 +240,7 @@ public sealed partial class Loc : INotifyPropertyChanged
         ["a11y.expanded"] = ["развёрнуто", "açık", "expanded", "已展开", "باز"],
         ["a11y.collapsed"] = ["свёрнуто", "kapalı", "collapsed", "已折叠", "بسته"],
         ["a11y.unread"] = ["непрочитанных", "okunmamış", "unread", "条未读", "خوانده‌نشده"],
+        ["a11y.you"] = ["Вы", "Siz", "You", "你", "شما"],
 
         // Plan status
         ["plan.none"] = ["Нет активного тарифа", "Aktif paket yok", "No active plan", "没有有效套餐", "طرح فعالی وجود ندارد"],

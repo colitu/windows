@@ -504,27 +504,6 @@ public partial class ColituMainWindow
         }
     }
 
-    // ── Left column fit ────────────────────────────────────────────────────
-    /// <summary>
-    /// The connect ring gives way so the status and the quick settings fit under it: full size when
-    /// there is room (1600 × 1000), smaller in the smallest window; the column scrolls only below that.
-    /// </summary>
-    private void FitHomeOrb()
-    {
-        if (HomeLeftScroll == null || HomeLeftScroll.ActualHeight <= 0)
-        {
-            return;
-        }
-        var others = HomeStatus.ActualHeight + (HomeQuick.Visibility == Visibility.Visible ? HomeQuick.ActualHeight + HomeQuick.Margin.Top : 0);
-        // The ring's box is 440 tall with -40 / -50 margins, so it takes 440·s − 90.
-        var scale = Math.Clamp((HomeLeftScroll.ActualHeight - others + 90) / 440, 0.62, 1);
-        if (Math.Abs(OrbScale.ScaleX - scale) > 0.005)
-        {
-            OrbScale.ScaleX = scale;
-            OrbScale.ScaleY = scale;
-        }
-    }
-
     private static string? ServerLabel(ColituVpnServer? server)
     {
         if (server == null)

@@ -258,6 +258,8 @@ public partial class ColituMainWindow
             SelectionBrush = (Brush)FindResource("VioletBrush"),
             Template = PlainTextTemplate()
         };
+        // A read-only text field: screen readers name it by who wrote it (the text is its value).
+        System.Windows.Automation.AutomationProperties.SetName(content, mine ? Loc.I["a11y.you"] : Loc.I["bot.name"]);
         body.Children.Add(content);
         foreach (var source in (sources ?? []).Where(item => IsHelpLink(item.Url)).Take(3))
         {

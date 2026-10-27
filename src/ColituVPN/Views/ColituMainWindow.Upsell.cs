@@ -52,9 +52,7 @@ public partial class ColituMainWindow
     {
         var state = _upsell;
         var loc = Loc.I;
-        // The plain free-plan line repeated the plan card (allowance, devices) above it, which now has
-        // its own "Get Premium" button: only the stronger states (running low, used up, Premium ended) show.
-        if (state.Kind is ColituUpsellKind.None or ColituUpsellKind.Free || state.LimitBytes <= 0)
+        if (state.Kind == ColituUpsellKind.None || state.LimitBytes <= 0)
         {
             UpsellBanner.Visibility = Visibility.Collapsed;
             return;
