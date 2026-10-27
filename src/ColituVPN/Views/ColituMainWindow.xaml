@@ -109,6 +109,8 @@
 
             <!-- A section title in the locations list (e.g. Multihop): no card, not selectable. -->
             <Style x:Key="ServerListItem" TargetType="ListBoxItem" BasedOn="{StaticResource ServerItem}">
+                <!-- Screen readers: "Berlin, Germany, 47 ms, connected" instead of the class name. -->
+                <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
                 <Style.Triggers>
                     <DataTrigger Binding="{Binding IsHeader}" Value="True">
                         <Setter Property="Cursor" Value="Arrow" />
@@ -128,6 +130,14 @@
                 </Style.Triggers>
             </Style>
 
+            <!-- A support request: read out as its subject, status and unread count. -->
+            <Style x:Key="SupportListItem" TargetType="ListBoxItem" BasedOn="{StaticResource ServerItem}">
+                <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
+            </Style>
+
+            <!-- Star on a location row: adds it to / removes it from the favourites (FavoriteToggle_Click). -->
+            <Geometry x:Key="IconStar">M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.85 1.03-6L3.3 9.6l6-.9z</Geometry>
+
             <DataTemplate x:Key="SupportRowTemplate">
                 <Grid Margin="2,2">
                     <Grid.RowDefinitions>
@@ -140,13 +150,13 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock FontSize="14" FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Grid.Column="1" Margin="10,1,0,0" FontSize="11.5" Foreground="{StaticResource DimBrush}" Text="{Binding TimeText}" />
+                    <TextBlock Grid.Column="1" Margin="10,1,0,0" FontSize="12" Foreground="{StaticResource DimBrush}" Text="{Binding TimeText}" />
                     <TextBlock Grid.Row="1" Margin="0,4,0,0" FontSize="12.5" Foreground="{StaticResource MutedBrush}" Text="{Binding Preview}" TextTrimming="CharacterEllipsis" />
                     <Border Grid.Row="1" Grid.Column="1" MinWidth="20" Height="20" Margin="10,2,0,0" Padding="6,0" HorizontalAlignment="Right" Background="{StaticResource DangerBrush}" CornerRadius="10" Visibility="{Binding UnreadVisibility}">
-                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="White" Text="{Binding Unread}" />
+                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" FontWeight="Bold" Foreground="White" Text="{Binding Unread}" />
                     </Border>
                     <Border Grid.Row="2" Margin="0,8,0,0" HorizontalAlignment="Left" Padding="8,2" Background="{Binding StatusBackground}" CornerRadius="8">
-                        <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{Binding StatusForeground}" Text="{Binding StatusText}" />
+                        <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{Binding StatusForeground}" Text="{Binding StatusText}" />
                     </Border>
                 </Grid>
             </DataTemplate>
@@ -176,12 +186,12 @@
                             <Border Margin="8,1,0,0" Padding="7,1" VerticalAlignment="Center" Background="#268B78FF" CornerRadius="8" Visibility="{Binding AdFreeYoutubeVisibility}">
                                 <StackPanel Orientation="Horizontal">
                                     <Path Width="7" Height="8" Margin="0,0,5,0" VerticalAlignment="Center" Data="M0,0 L7,4 L0,8 Z" Fill="{StaticResource LilacBrush}" Stretch="Uniform" />
-                                    <TextBlock FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource LilacBrush}" Text="{Binding AdFreeYoutubeText}" />
+                                    <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource LilacBrush}" Text="{Binding AdFreeYoutubeText}" />
                                 </StackPanel>
                             </Border>
                             <!-- The node runs one of Colitu's ad-blocking DNS servers. -->
                             <Border Margin="8,1,0,0" Padding="7,1" VerticalAlignment="Center" Background="#268B78FF" CornerRadius="8" Visibility="{Binding AdBlockVisibility}">
-                                <TextBlock FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource LilacBrush}" Text="{Binding AdBlockText}" />
+                                <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource LilacBrush}" Text="{Binding AdBlockText}" />
                             </Border>
                         </StackPanel>
                         <TextBlock Margin="0,2,0,0" FontSize="12.5" Foreground="{StaticResource MutedBrush}" Text="{Binding Subtitle}" TextTrimming="CharacterEllipsis" />
@@ -191,7 +201,7 @@
                         <StackPanel Margin="0,0,10,0" VerticalAlignment="Center">
                             <TextBlock MinWidth="52" FontSize="13" FontWeight="SemiBold" Foreground="{Binding PingTextBrush}" Text="{Binding PingText}" TextAlignment="Right" />
                             <!-- A route's ping is measured to its entry node only. -->
-                            <TextBlock Margin="0,1,0,0" FontSize="10.5" Foreground="{StaticResource MutedBrush}" Text="{Binding PingNote}" TextAlignment="Right" Visibility="{Binding PingNoteVisibility}" />
+                            <TextBlock Margin="0,1,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="{Binding PingNote}" TextAlignment="Right" Visibility="{Binding PingNoteVisibility}" />
                         </StackPanel>
                         <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                             <Border Width="4" Height="8" Margin="0,0,3,0" VerticalAlignment="Bottom" Background="{Binding PingBar1}" CornerRadius="2" />
@@ -202,6 +212,9 @@
                     <Border Grid.Column="3" MinWidth="92" Style="{StaticResource Badge}" Visibility="{Binding StateVisibility}" Background="{Binding StateBackground}">
                         <TextBlock HorizontalAlignment="Center" Foreground="{Binding StateForeground}" Style="{StaticResource BadgeText}" Text="{Binding StateText}" />
                     </Border>
+                    <Button Grid.Column="4" Width="34" Height="34" Margin="8,0,-6,0" VerticalAlignment="Center" AutomationProperties.Name="{Binding FavoriteActionText}" Click="FavoriteToggle_Click" Style="{StaticResource IconButton}" ToolTip="{Binding FavoriteActionText}" Visibility="{Binding StarVisibility}">
+                        <Path Width="16" Height="16" Data="{StaticResource IconStar}" Fill="{Binding StarFill}" Stretch="Uniform" Stroke="{Binding StarStroke}" StrokeLineJoin="Round" StrokeThickness="1.6" />
+                    </Button>
                     <!-- Country header: points right when closed, down when open. -->
                     <Path Grid.Column="4" Width="12" Height="12" Margin="14,0,2,0" VerticalAlignment="Center" Data="{StaticResource IconChevron}" RenderTransformOrigin="0.5,0.5" Stretch="Uniform" Stroke="{StaticResource MutedBrush}" StrokeEndLineCap="Round" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeThickness="1.8" Visibility="{Binding ChevronVisibility}">
                         <Path.RenderTransform>
@@ -225,10 +238,11 @@
 
         <tb:TaskbarIcon x:Name="TrayIcon" IconSource="/Resources/colitu-tray.ico" ToolTipText="Colitu VPN" Visibility="Visible">
             <tb:TaskbarIcon.ContextMenu>
-                <ContextMenu>
+                <ContextMenu x:Name="TrayMenu" Opened="TrayMenu_Opened">
                     <MenuItem Click="TrayOpen_Click" FontWeight="SemiBold" Header="{s:T tray.open}" />
                     <MenuItem x:Name="TrayConnectItem" Click="TrayConnect_Click" Header="{s:T tray.connect}" />
-                    <Separator />
+                    <!-- Fastest server and up to three favourite / recent ones go here (TrayMenu_Opened). -->
+                    <Separator x:Name="TrayExitSeparator" />
                     <MenuItem Click="TrayExit_Click" Header="{s:T tray.exit}" />
                 </ContextMenu>
             </tb:TaskbarIcon.ContextMenu>
@@ -540,16 +554,23 @@
                         <ColumnDefinition Width="372" />
                     </Grid.ColumnDefinitions>
 
-                    <Grid Margin="0,0,28,0" VerticalAlignment="Center">
+                    <!-- Left: connect button, status and the quick settings under them. The ring shrinks
+                         (FitHomeOrb) so all of it fits; only when even that is not enough does it scroll. -->
+                    <ScrollViewer x:Name="HomeLeftScroll" Margin="0,0,28,0" Focusable="False" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <Grid x:Name="HomeLeft" VerticalAlignment="Center">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <!-- Connect button with the particle ring behind it (ColituPowerButton on the phones). -->
                         <Grid x:Name="Orb" Width="440" Height="440" Margin="0,-40,0,-50" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Grid.LayoutTransform>
+                                <ScaleTransform x:Name="OrbScale" ScaleX="1" ScaleY="1" />
+                            </Grid.LayoutTransform>
                             <local:ColituParticles x:Name="OrbParticles" Energy="0.22" Mode="Ring" Color="#9483FF" Color2="#C4B5FD" />
-                            <Button x:Name="ConnectButton" Width="204" Height="204" Click="ConnectButton_Click" Cursor="Hand" FocusVisualStyle="{x:Null}" RenderTransformOrigin="0.5,0.5">
+                            <Button x:Name="ConnectButton" Width="204" Height="204" AutomationProperties.Name="{s:T home.connect}" Click="ConnectButton_Click" Cursor="Hand" FocusVisualStyle="{x:Null}" RenderTransformOrigin="0.5,0.5">
                                 <Button.RenderTransform>
                                     <ScaleTransform x:Name="ConnectScale" />
                                 </Button.RenderTransform>
@@ -620,7 +641,7 @@
                             </Button>
                         </Grid>
 
-                        <StackPanel Grid.Row="1" HorizontalAlignment="Center">
+                        <StackPanel x:Name="HomeStatus" Grid.Row="1" HorizontalAlignment="Center">
                             <TextBlock x:Name="ConnectLabel" HorizontalAlignment="Center" FontSize="15" Foreground="{StaticResource MutedBrush}" />
                             <TextBlock x:Name="HomeTitle" Margin="0,16,0,0" HorizontalAlignment="Center" FontSize="22" Style="{StaticResource H2}" TextAlignment="Center" />
                             <TextBlock x:Name="HomeSubtitle" Margin="0,6,0,0" MaxWidth="500" HorizontalAlignment="Center" Style="{StaticResource Small}" FontSize="13.5" TextAlignment="Center" />
@@ -656,12 +677,54 @@
                             <!-- A picked server where every transport failed: switch to the automatic choice and connect, only when tapped. -->
                             <Button x:Name="TryFastestButton" Margin="0,12,0,0" HorizontalAlignment="Center" Click="TryFastest_Click" Content="{s:T connect.tryFastest}" Style="{StaticResource LinkButton}" Visibility="Collapsed" />
                         </StackPanel>
+
+                        <!-- Quick settings (Advanced mode) under the status; in Simple mode the one-tap way to Advanced mode. -->
+                        <StackPanel x:Name="HomeQuick" Grid.Row="2" MaxWidth="480" Margin="0,18,0,0">
+                            <Border x:Name="QuickSettingsCard" Style="{StaticResource Panel}" Padding="18,14,18,10">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource Kicker}" Text="{s:T home.quick}" />
+                                    <Border Margin="0,12,0,0" Style="{StaticResource SegmentHost}">
+                                        <UniformGrid Rows="1">
+                                            <RadioButton x:Name="HomeModeProxy" Checked="Mode_Checked" Content="{s:T settings.mode.proxy}" GroupName="HomeMode" MinHeight="38" FontSize="14" Style="{StaticResource SegmentOption}" Tag="proxy" />
+                                            <RadioButton x:Name="HomeModeTun" Checked="Mode_Checked" Content="{s:T settings.mode.tun}" GroupName="HomeMode" MinHeight="38" FontSize="14" Style="{StaticResource SegmentOption}" Tag="tun" />
+                                        </UniformGrid>
+                                    </Border>
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="24" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid MinHeight="44">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Margin="0,0,10,0" FontSize="14.5" Style="{StaticResource RowLabel}" Foreground="{StaticResource TextBrush}" Text="{s:T settings.killSwitch}" />
+                                            <CheckBox x:Name="HomeKillSwitch" Grid.Column="1" AutomationProperties.Name="{s:T settings.killSwitch}" AutomationProperties.HelpText="{s:T settings.killSwitchHint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                        </Grid>
+                                        <Grid Grid.Column="2" MinHeight="44">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Margin="0,0,10,0" FontSize="14.5" Style="{StaticResource RowLabel}" Foreground="{StaticResource TextBrush}" Text="{s:T settings.autoConnect}" />
+                                            <CheckBox x:Name="HomeAutoConnect" Grid.Column="1" AutomationProperties.Name="{s:T settings.autoConnect}" AutomationProperties.HelpText="{s:T settings.autoConnectHint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                        </Grid>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                            <!-- Simple mode: hidden expert settings that act, and the one-tap way to Advanced mode. -->
+                            <Button x:Name="AdvancedSettingsOnButton" HorizontalAlignment="Center" Click="AdvancedSettingsOn_Click" Content="{s:T mode.advancedSettingsOn}" FontSize="12.5" Style="{StaticResource LinkButton}" Visibility="Collapsed" />
+                            <Button x:Name="HomeAdvancedButton" Margin="0,8,0,0" HorizontalAlignment="Center" Click="HomeAdvanced_Click" Content="{s:T mode.advanced}" Style="{StaticResource LinkButton}" Visibility="Collapsed" />
+                        </StackPanel>
                     </Grid>
+                    </ScrollViewer>
 
                     <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="HomeCards">
                             <!-- Notice from the panel (usage warning, campaign); closable, see ColituMainWindow.Notices.cs. -->
-                            <Border x:Name="NoticeBanner" Margin="0,0,0,16" Padding="18,14,10,14" Background="#0DFFFFFF" BorderBrush="{StaticResource LineStrongBrush}" BorderThickness="1" CornerRadius="20" Visibility="Collapsed">
+                            <Border x:Name="NoticeBanner" Margin="0,0,0,12" Padding="18,14,10,14" Background="#0DFFFFFF" BorderBrush="{StaticResource LineStrongBrush}" BorderThickness="1" CornerRadius="20" Visibility="Collapsed">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -677,7 +740,7 @@
                             </Border>
 
                             <!-- Free plan: the month's allowance and the way to Premium; stronger when running low, used up or just back from Premium (ColituUpsell). -->
-                            <Border x:Name="UpsellBanner" Margin="0,0,0,16" Padding="18,12,12,12" Background="#0DFFFFFF" BorderBrush="{StaticResource LineStrongBrush}" BorderThickness="1" CornerRadius="20" Visibility="Collapsed">
+                            <Border x:Name="UpsellBanner" Margin="0,0,0,12" Padding="18,12,12,12" Background="#0DFFFFFF" BorderBrush="{StaticResource LineStrongBrush}" BorderThickness="1" CornerRadius="20" Visibility="Collapsed">
                                 <StackPanel>
                                     <Grid x:Name="UpsellCompact">
                                         <Grid.ColumnDefinitions>
@@ -691,7 +754,7 @@
                                         <TextBlock x:Name="UpsellTitle" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" />
                                         <TextBlock x:Name="UpsellBody" Margin="0,4,0,0" FontSize="13" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
                                         <WrapPanel Margin="0,12,0,0">
-                                            <Button Height="40" Padding="18,0" Click="UpsellPremium_Click" Style="{StaticResource PrimaryButton}">
+                                            <Button Height="40" Padding="18,0" AutomationProperties.Name="{s:T upsell.cta}" Click="UpsellPremium_Click" Style="{StaticResource PrimaryButton}">
                                                 <TextBlock FontSize="14" Text="{s:T upsell.cta}" />
                                             </Button>
                                             <Button x:Name="UpsellLaterButton" Margin="16,0,0,0" VerticalAlignment="Center" Click="UpsellLater_Click" Content="{s:T upsell.later}" Style="{StaticResource LinkButton}" Visibility="Collapsed" />
@@ -701,7 +764,7 @@
                             </Border>
 
                             <!-- Trial ends within 3 days (dismissible per day). -->
-                            <Border x:Name="TrialBanner" Margin="0,0,0,16" Padding="18,16" Background="#149F8CFF" BorderBrush="#599F8CFF" BorderThickness="1" CornerRadius="20" Visibility="Collapsed">
+                            <Border x:Name="TrialBanner" Margin="0,0,0,12" Padding="18,16" Background="#149F8CFF" BorderBrush="#599F8CFF" BorderThickness="1" CornerRadius="20" Visibility="Collapsed">
                                 <StackPanel>
                                     <TextBlock x:Name="TrialBannerText" FontSize="13.5" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" />
                                     <WrapPanel Margin="0,10,0,0">
@@ -712,7 +775,8 @@
                             </Border>
 
                             <!-- Location -->
-                            <Border Cursor="Hand" MouseLeftButtonUp="LocationCard_Click" Style="{StaticResource Panel}" Padding="20">
+                            <!-- Sized so location, passport and plan fit the smallest window (1000 × 680) without scrolling. -->
+                            <Border Cursor="Hand" MouseLeftButtonUp="LocationCard_Click" Style="{StaticResource Panel}" Padding="18">
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -720,7 +784,7 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <Viewbox Width="52" Height="52">
+                                        <Viewbox Width="48" Height="48">
                                             <ContentPresenter x:Name="HomeFlag" ContentTemplate="{StaticResource FlagTemplate}" />
                                         </Viewbox>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
@@ -731,14 +795,16 @@
                                             <Path x:Name="HomeServerCheckMark" Width="10" Height="8" Data="{StaticResource IconCheck}" Stretch="Fill" Stroke="{StaticResource OnAccentBrush}" StrokeEndLineCap="Round" StrokeStartLineCap="Round" StrokeThickness="2" Visibility="Collapsed" />
                                         </Border>
                                     </Grid>
-                                    <Button Height="48" Margin="0,18,0,0" HorizontalAlignment="Stretch" Click="ChangeServer_Click" Style="{StaticResource PrimaryButton}">
+                                    <Button Height="44" Margin="0,14,0,0" HorizontalAlignment="Stretch" AutomationProperties.Name="{s:T home.changeServer}" Click="ChangeServer_Click" Style="{StaticResource PrimaryButton}">
                                         <TextBlock FontSize="15" Text="{s:T home.changeServer}" />
                                     </Button>
+                                    <!-- Up to three favourite / recent servers: one click switches like a row in Locations (ApplyServerShortcuts). -->
+                                    <UniformGrid x:Name="HomeShortcuts" Margin="-3,10,-3,0" AutomationProperties.Name="{s:T home.shortcuts}" Rows="1" Visibility="Collapsed" />
                                 </StackPanel>
                             </Border>
 
                             <!-- Colitu Passport: cover, the nearest goal and the count (ColituMainWindow.Passport.cs). -->
-                            <Button x:Name="PassportHomeCard" Margin="0,16,0,0" Padding="14,12,16,12" AutomationProperties.Name="{s:T passport.open}" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelEdgeBrush}" BorderThickness="1" Click="PassportHomeCard_Click" Style="{StaticResource PassportPlain}">
+                            <Button x:Name="PassportHomeCard" Margin="0,12,0,0" Padding="14,10,16,10" AutomationProperties.Name="{s:T passport.open}" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelEdgeBrush}" BorderThickness="1" Click="PassportHomeCard_Click" Style="{StaticResource PassportPlain}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -746,7 +812,7 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <Image x:Name="PassportHomeCover" Height="48" RenderOptions.BitmapScalingMode="HighQuality" Stretch="Uniform" />
+                                    <Image x:Name="PassportHomeCover" Height="44" RenderOptions.BitmapScalingMode="HighQuality" Stretch="Uniform" />
                                     <StackPanel Grid.Column="1" Margin="12,0,10,0" VerticalAlignment="Center">
                                         <TextBlock FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Text="{s:T passport.title}" />
                                         <TextBlock x:Name="PassportHomeGoal" Margin="0,3,0,0" FontSize="12.5" Foreground="{StaticResource LilacBrush}" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxHeight="36" />
@@ -757,40 +823,41 @@
                             </Button>
 
                             <!-- Plan -->
-                            <Border Margin="0,16,0,0" Style="{StaticResource Panel}" Padding="20,18,20,18">
+                            <Border Margin="0,12,0,0" Style="{StaticResource Panel}" Padding="20,16,20,16">
                                 <StackPanel>
                                     <Grid>
                                         <TextBlock VerticalAlignment="Center" Style="{StaticResource Kicker}" Text="{s:T home.plan}" />
-                                        <Border x:Name="PlanBadge" HorizontalAlignment="Right" Padding="14,6" Style="{StaticResource Badge}">
+                                        <Border x:Name="PlanBadge" HorizontalAlignment="Right" Padding="14,5" Style="{StaticResource Badge}">
                                             <TextBlock x:Name="PlanBadgeText" FontSize="12" Style="{StaticResource BadgeText}" />
                                         </Border>
                                     </Grid>
-                                    <TextBlock x:Name="PlanName" Margin="0,10,0,0" FontSize="22" Style="{StaticResource H2}" />
-                                    <TextBlock x:Name="PlanDetail" Margin="0,6,0,0" FontSize="13.5" Foreground="{StaticResource MutedBrush}" Style="{StaticResource Body}" />
-                                    <Border Margin="0,16,0,0" Style="{StaticResource Divider}" />
-                                    <StackPanel x:Name="TrafficBlock" Margin="0,14,0,0">
+                                    <TextBlock x:Name="PlanName" Margin="0,6,0,0" FontSize="22" Style="{StaticResource H2}" />
+                                    <TextBlock x:Name="PlanDetail" Margin="0,4,0,0" FontSize="13.5" Foreground="{StaticResource MutedBrush}" Style="{StaticResource Body}" />
+                                    <Border Margin="0,12,0,0" Style="{StaticResource Divider}" />
+                                    <StackPanel x:Name="TrafficBlock" Margin="0,12,0,0">
                                         <Grid>
                                             <TextBlock Style="{StaticResource RowLabel}" Text="{s:T home.traffic}" />
                                             <TextBlock x:Name="TrafficText" Style="{StaticResource RowValue}" />
                                         </Grid>
-                                        <Grid x:Name="TrafficTrack" Height="6" Margin="0,10,0,0">
+                                        <Grid x:Name="TrafficTrack" Height="6" Margin="0,8,0,0">
                                             <Border Background="{StaticResource Glass10Brush}" CornerRadius="3" />
                                             <Border x:Name="TrafficFill" Width="0" HorizontalAlignment="Left" Background="{StaticResource ActionBrush}" CornerRadius="3" />
                                         </Grid>
-                                        <Border Margin="0,14,0,0" Style="{StaticResource Divider}" />
+                                        <Border Margin="0,12,0,0" Style="{StaticResource Divider}" />
                                     </StackPanel>
-                                    <Grid Margin="0,14,0,0">
+                                    <Grid Margin="0,12,0,0">
                                         <TextBlock Style="{StaticResource RowLabel}" Text="{s:T home.devices}" />
                                         <TextBlock x:Name="DevicesText" Style="{StaticResource RowValue}" />
                                     </Grid>
-                                    <Button x:Name="PlanCtaButton" Height="44" Margin="0,18,0,0" HorizontalAlignment="Stretch" Click="PlanCta_Click" Style="{StaticResource PrimaryButton}" Visibility="Collapsed">
-                                        <TextBlock x:Name="PlanCtaText" FontSize="14" />
+                                    <!-- Free plan: "Get Premium" opens Plans with the plan that fits preselected; otherwise choose / extend. -->
+                                    <Button x:Name="PlanCtaButton" Height="44" Margin="0,14,0,0" HorizontalAlignment="Stretch" Click="PlanCta_Click" Style="{StaticResource PrimaryButton}" Visibility="Collapsed">
+                                        <TextBlock x:Name="PlanCtaText" FontSize="14.5" FontWeight="SemiBold" />
                                     </Button>
                                 </StackPanel>
                             </Border>
 
                             <!-- Invite a friend: after the first successful connection; closable for 14 days (ColituMainWindow.Invite.cs). -->
-                            <Border x:Name="InviteCard" Margin="0,16,0,0" Padding="20,16,12,16" Cursor="Hand" MouseLeftButtonUp="InviteCard_Click" Style="{StaticResource Panel}" Visibility="Collapsed">
+                            <Border x:Name="InviteCard" Margin="0,12,0,0" Padding="20,16,12,16" Cursor="Hand" MouseLeftButtonUp="InviteCard_Click" Style="{StaticResource Panel}" Visibility="Collapsed">
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -817,30 +884,6 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- Quick settings (Advanced mode) -->
-                            <Border x:Name="QuickSettingsCard" Margin="0,16,0,0" Style="{StaticResource Panel}" Padding="20,18,20,12">
-                                <StackPanel>
-                                    <TextBlock Style="{StaticResource Kicker}" Text="{s:T home.quick}" />
-                                    <Border Margin="0,16,0,0" Style="{StaticResource SegmentHost}">
-                                        <UniformGrid Rows="1">
-                                            <RadioButton x:Name="HomeModeProxy" Checked="Mode_Checked" Content="{s:T settings.mode.proxy}" GroupName="HomeMode" MinHeight="44" FontSize="14.5" Style="{StaticResource SegmentOption}" Tag="proxy" />
-                                            <RadioButton x:Name="HomeModeTun" Checked="Mode_Checked" Content="{s:T settings.mode.tun}" GroupName="HomeMode" MinHeight="44" FontSize="14.5" Style="{StaticResource SegmentOption}" Tag="tun" />
-                                        </UniformGrid>
-                                    </Border>
-                                    <Grid Margin="0,14,0,0" MinHeight="44">
-                                        <TextBlock FontSize="15" Style="{StaticResource RowLabel}" Foreground="{StaticResource TextBrush}" Text="{s:T settings.killSwitch}" />
-                                        <CheckBox x:Name="HomeKillSwitch" HorizontalAlignment="Right" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
-                                    </Grid>
-                                    <Border Style="{StaticResource Divider}" />
-                                    <Grid MinHeight="52">
-                                        <TextBlock FontSize="15" Style="{StaticResource RowLabel}" Foreground="{StaticResource TextBrush}" Text="{s:T settings.autoConnect}" />
-                                        <CheckBox x:Name="HomeAutoConnect" HorizontalAlignment="Right" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
-                            <!-- Simple mode: hidden expert settings that act, and the one-tap way to Advanced mode. -->
-                            <Button x:Name="AdvancedSettingsOnButton" Margin="0,16,0,0" HorizontalAlignment="Center" Click="AdvancedSettingsOn_Click" Content="{s:T mode.advancedSettingsOn}" FontSize="12.5" Style="{StaticResource LinkButton}" Visibility="Collapsed" />
-                            <Button x:Name="HomeAdvancedButton" Margin="0,12,0,0" HorizontalAlignment="Center" Click="HomeAdvanced_Click" Content="{s:T mode.advanced}" Style="{StaticResource LinkButton}" Visibility="Collapsed" />
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
@@ -884,7 +927,7 @@
                         <Button Grid.Column="3" AutomationProperties.Name="{s:T passport.how}" Click="PassportHow_Click" Style="{StaticResource PassportRoundButton}" ToolTip="{s:T passport.how}">
                             <Grid Width="18" Height="18">
                                 <Ellipse Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" />
-                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Text="i" />
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" FontWeight="Bold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Text="i" />
                             </Grid>
                         </Button>
                     </Grid>
@@ -930,7 +973,7 @@
                                 <StackPanel x:Name="SortList" Orientation="Horizontal" />
                             </Border>
                             <Grid Width="300">
-                                <TextBox x:Name="ServerSearchBox" Padding="42,0,16,0" Style="{StaticResource Field}" Tag="{s:T locations.search}" TextChanged="ServerSearch_TextChanged" />
+                                <TextBox x:Name="ServerSearchBox" Padding="42,0,16,0" AutomationProperties.Name="{s:T locations.search}" Style="{StaticResource Field}" Tag="{s:T locations.search}" TextChanged="ServerSearch_TextChanged" />
                                 <Path Width="16" Height="16" Margin="16,0,0,0" HorizontalAlignment="Left" Data="{StaticResource IconSearch}" IsHitTestVisible="False" Stretch="Uniform" Stroke="{StaticResource DimBrush}" StrokeThickness="1.8" />
                             </Grid>
                         </StackPanel>
@@ -1021,12 +1064,21 @@
                                         </Grid>
                                         <Border Height="1" Margin="0,16,0,0" Background="{StaticResource LineBrush}" />
                                         <Grid Margin="0,14,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
                                             <TextBlock VerticalAlignment="Center" Style="{StaticResource Kicker}" Text="{s:T pricing.total}" />
-                                            <TextBlock x:Name="SummaryTotal" HorizontalAlignment="Right" FontSize="28" FontWeight="SemiBold" />
+                                            <TextBlock x:Name="SummaryTotal" Grid.Column="1" Margin="12,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="28" FontWeight="SemiBold" TextAlignment="Right" TextWrapping="Wrap" />
                                         </Grid>
-                                        <Button x:Name="PayButton" Height="52" Margin="0,20,0,0" HorizontalAlignment="Stretch" Click="Pay_Click" IsEnabled="False" Style="{StaticResource PrimaryButton}">
+                                        <!-- The price could not be fetched: why, and a way to ask again (UpdateQuoteAsync). -->
+                                        <StackPanel x:Name="QuoteErrorBox" Margin="0,12,0,0" Visibility="Collapsed">
+                                            <TextBlock x:Name="QuoteErrorText" FontSize="13" Foreground="#FFA3AE" TextWrapping="Wrap" />
+                                            <Button x:Name="QuoteRetryButton" Margin="0,6,0,0" HorizontalAlignment="Left" Click="QuoteRetry_Click" Content="{s:T pricing.retry}" Style="{StaticResource LinkButton}" />
+                                        </StackPanel>
+                                        <Button x:Name="PayButton" Height="52" Margin="0,20,0,0" HorizontalAlignment="Stretch" AutomationProperties.Name="{s:T pricing.pay}" Click="Pay_Click" IsEnabled="False" Style="{StaticResource PrimaryButton}">
                                             <StackPanel Orientation="Horizontal">
-                                                <Ellipse x:Name="PaySpinner" Margin="0,0,10,0" Stroke="{StaticResource OnAccentBrush}" Style="{StaticResource Spinner}" Visibility="Collapsed" />
+                                                <Ellipse x:Name="PaySpinner" Margin="0,0,10,0" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Style="{StaticResource Spinner}" Visibility="Collapsed" />
                                                 <TextBlock FontSize="14.5" Text="{s:T pricing.pay}" />
                                             </StackPanel>
                                         </Button>
@@ -1061,10 +1113,10 @@
 
                         <!-- The account on app.colitu.com stays reachable (devices, invoices). -->
                         <WrapPanel Margin="0,16,0,0" VerticalAlignment="Center">
-                            <Button Height="40" Margin="0,0,10,8" Padding="18,0" Click="ManagePlan_Click" Style="{StaticResource SecondaryButton}">
+                            <Button Height="40" Margin="0,0,10,8" Padding="18,0" AutomationProperties.Name="{s:T plan.manageButton}" Click="ManagePlan_Click" Style="{StaticResource SecondaryButton}">
                                 <TextBlock FontSize="13" Text="{s:T plan.manageButton}" />
                             </Button>
-                            <Button x:Name="PlanRefreshButton" Height="40" Margin="0,0,10,8" Padding="18,0" Click="PlanRefresh_Click" Style="{StaticResource SecondaryButton}">
+                            <Button x:Name="PlanRefreshButton" Height="40" Margin="0,0,10,8" Padding="18,0" AutomationProperties.Name="{s:T plan.refresh}" Click="PlanRefresh_Click" Style="{StaticResource SecondaryButton}">
                                 <StackPanel Orientation="Horizontal">
                                     <Ellipse x:Name="PlanRefreshSpinner" Margin="0,0,10,0" Style="{StaticResource Spinner}" Visibility="Collapsed" />
                                     <TextBlock FontSize="13" Text="{s:T plan.refresh}" />
@@ -1176,18 +1228,18 @@
                                                             <StackPanel Orientation="Horizontal">
                                                                 <TextBlock FontSize="14" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" MaxWidth="230" />
                                                                 <Border Margin="8,0,0,0" Style="{StaticResource Badge}" Padding="7,2" Visibility="{Binding CurrentVisibility}">
-                                                                    <TextBlock FontSize="9.5" Style="{StaticResource BadgeText}" Text="{s:T account.thisDevice}" />
+                                                                    <TextBlock FontSize="12" Style="{StaticResource BadgeText}" Text="{s:T account.thisDevice}" />
                                                                 </Border>
                                                                 <!-- Paused by the plan's device limit (suspended_reason over_limit). -->
                                                                 <Border Margin="8,0,0,0" Padding="7,2" Background="#26F5C36B" CornerRadius="8" Visibility="{Binding PausedVisibility}">
-                                                                    <TextBlock FontSize="9.5" FontWeight="Bold" Foreground="#F5C36B" Text="{s:T account.paused}" />
+                                                                    <TextBlock FontSize="12" FontWeight="Bold" Foreground="#F5C36B" Text="{s:T account.paused}" />
                                                                 </Border>
                                                             </StackPanel>
                                                             <TextBlock Margin="0,2,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="{Binding Detail}" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="2" Orientation="Horizontal">
                                                             <Button Margin="0,0,6,0" VerticalAlignment="Center" Click="ActivateDevice_Click" Content="{s:T account.activate}" FontSize="12.5" Style="{StaticResource LinkButton}" Tag="{Binding}" Visibility="{Binding PausedVisibility}" />
-                                                            <Button Click="RemoveDevice_Click" Style="{StaticResource IconButton}" Tag="{Binding}" ToolTip="{s:T account.remove}">
+                                                            <Button AutomationProperties.Name="{Binding RemoveLabel}" Click="RemoveDevice_Click" Style="{StaticResource IconButton}" Tag="{Binding}" ToolTip="{s:T account.remove}">
                                                                 <Path Width="12" Height="12" Data="{StaticResource IconX}" Style="{StaticResource Stroke}" />
                                                             </Button>
                                                         </StackPanel>
@@ -1349,7 +1401,7 @@
                                     <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T mode.advanced}" />
                                     <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T mode.advancedHint}" />
                                 </StackPanel>
-                                <CheckBox x:Name="SettingsAdvanced" Grid.Column="1" Checked="Advanced_Click" Style="{StaticResource Switch}" Unchecked="Advanced_Click" />
+                                <CheckBox x:Name="SettingsAdvanced" Grid.Column="1" AutomationProperties.Name="{s:T mode.advanced}" AutomationProperties.HelpText="{s:T mode.advancedHint}" Checked="Advanced_Click" Style="{StaticResource Switch}" Unchecked="Advanced_Click" />
                             </Grid>
                         </Border>
                         <Grid Margin="0,16,0,0">
@@ -1381,7 +1433,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.killSwitch}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.killSwitchHint}" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsKillSwitch" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                            <CheckBox x:Name="SettingsKillSwitch" Grid.Column="1" AutomationProperties.Name="{s:T settings.killSwitch}" AutomationProperties.HelpText="{s:T settings.killSwitchHint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
                                         </Grid>
                                         <Grid Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
@@ -1392,7 +1444,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.killSwitchLan}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.killSwitchLanHint}" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsKillSwitchLan" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                            <CheckBox x:Name="SettingsKillSwitchLan" Grid.Column="1" AutomationProperties.Name="{s:T settings.killSwitchLan}" AutomationProperties.HelpText="{s:T settings.killSwitchLanHint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
                                         </Grid>
                                         <Grid Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
@@ -1403,7 +1455,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.dns}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.dnsHint}" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsDns" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                            <CheckBox x:Name="SettingsDns" Grid.Column="1" AutomationProperties.Name="{s:T settings.dns}" AutomationProperties.HelpText="{s:T settings.dnsHint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
                                         </Grid>
                                         <Grid x:Name="SettingsAdBlockRow" Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
@@ -1414,7 +1466,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.adBlock}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.adBlockHint}" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsAdBlock" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                            <CheckBox x:Name="SettingsAdBlock" Grid.Column="1" AutomationProperties.Name="{s:T settings.adBlock}" AutomationProperties.HelpText="{s:T settings.adBlockHint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
                                         </Grid>
                                         <Grid x:Name="SettingsPrivacyRow" Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
@@ -1426,7 +1478,7 @@
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T privacy.hint}" />
                                                 <Button Margin="0,6,0,0" HorizontalAlignment="Left" Click="PrivacyScope_Click" Content="{s:T privacy.scope}" FontSize="12.5" Style="{StaticResource LinkButton}" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsPrivacy" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                            <CheckBox x:Name="SettingsPrivacy" Grid.Column="1" AutomationProperties.Name="{s:T privacy.title}" AutomationProperties.HelpText="{s:T privacy.hint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
                                         </Grid>
                                         <Grid x:Name="SettingsWarmSpareRow" Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
@@ -1437,7 +1489,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.warmSpare}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.warmSpareHint}" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsWarmSpare" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                            <CheckBox x:Name="SettingsWarmSpare" Grid.Column="1" AutomationProperties.Name="{s:T settings.warmSpare}" AutomationProperties.HelpText="{s:T settings.warmSpareHint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
                                         </Grid>
                                         <Grid x:Name="SettingsCslRow" Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
@@ -1448,7 +1500,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.cslAlpha}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.cslAlphaHint}" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsCsl" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                            <CheckBox x:Name="SettingsCsl" Grid.Column="1" AutomationProperties.Name="{s:T settings.cslAlpha}" AutomationProperties.HelpText="{s:T settings.cslAlphaHint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
                                         </Grid>
                                         <Grid Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
@@ -1459,7 +1511,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.autoConnect}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.autoConnectHint}" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsAutoConnect" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                            <CheckBox x:Name="SettingsAutoConnect" Grid.Column="1" AutomationProperties.Name="{s:T settings.autoConnect}" AutomationProperties.HelpText="{s:T settings.autoConnectHint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
                                         </Grid>
                                         <TextBlock x:Name="SettingsNote" Margin="0,16,0,0" FontSize="12.5" Foreground="{StaticResource LilacBrush}" Visibility="Collapsed" />
                                     </StackPanel>
@@ -1555,7 +1607,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.startup}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.startupHint}" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsStartup" Grid.Column="1" Checked="Startup_Click" Style="{StaticResource Switch}" Unchecked="Startup_Click" />
+                                            <CheckBox x:Name="SettingsStartup" Grid.Column="1" AutomationProperties.Name="{s:T settings.startup}" AutomationProperties.HelpText="{s:T settings.startupHint}" Checked="Startup_Click" Style="{StaticResource Switch}" Unchecked="Startup_Click" />
                                         </Grid>
                                         <Grid Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
@@ -1566,7 +1618,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.tray}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.trayHint}" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsTray" Grid.Column="1" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
+                                            <CheckBox x:Name="SettingsTray" Grid.Column="1" AutomationProperties.Name="{s:T settings.tray}" AutomationProperties.HelpText="{s:T settings.trayHint}" Checked="Preference_Click" Style="{StaticResource Switch}" Unchecked="Preference_Click" />
                                         </Grid>
                                         <Grid Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
@@ -1577,7 +1629,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.stats}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.statsHint}" TextWrapping="Wrap" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsStats" Grid.Column="1" Checked="Insight_Click" Style="{StaticResource Switch}" Unchecked="Insight_Click" />
+                                            <CheckBox x:Name="SettingsStats" Grid.Column="1" AutomationProperties.Name="{s:T settings.stats}" AutomationProperties.HelpText="{s:T settings.statsHint}" Checked="Insight_Click" Style="{StaticResource Switch}" Unchecked="Insight_Click" />
                                         </Grid>
                                         <Grid Margin="0,18,0,0">
                                             <Grid.ColumnDefinitions>
@@ -1588,7 +1640,7 @@
                                                 <TextBlock FontSize="14.5" FontWeight="Medium" Text="{s:T settings.surveys}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T settings.surveysHint}" TextWrapping="Wrap" />
                                             </StackPanel>
-                                            <CheckBox x:Name="SettingsSurveys" Grid.Column="1" Checked="Insight_Click" Style="{StaticResource Switch}" Unchecked="Insight_Click" />
+                                            <CheckBox x:Name="SettingsSurveys" Grid.Column="1" AutomationProperties.Name="{s:T settings.surveys}" AutomationProperties.HelpText="{s:T settings.surveysHint}" Checked="Insight_Click" Style="{StaticResource Switch}" Unchecked="Insight_Click" />
                                         </Grid>
                                     </StackPanel>
                                 </Border>
@@ -1657,19 +1709,19 @@
                             <TextBlock Margin="0,8,0,0" Style="{StaticResource Muted}" Text="{s:T support.sub}" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal">
-                            <Button x:Name="SupportChatButton" Height="42" Margin="0,0,10,0" Padding="16,0" Click="SupportChat_Click" Style="{StaticResource SecondaryButton}">
+                            <Button x:Name="SupportChatButton" Height="42" Margin="0,0,10,0" Padding="16,0" AutomationProperties.Name="{s:T bot.button}" Click="SupportChat_Click" Style="{StaticResource SecondaryButton}">
                                 <StackPanel Orientation="Horizontal">
                                     <Path Width="14" Height="14" Margin="0,0,8,0" Data="{StaticResource IconChat}" Style="{StaticResource Stroke}" />
                                     <TextBlock FontSize="13.5" Text="{s:T bot.button}" />
                                 </StackPanel>
                             </Button>
-                            <Button Height="42" Margin="0,0,10,0" Padding="16,0" Click="SupportHelp_Click" Style="{StaticResource SecondaryButton}">
+                            <Button Height="42" Margin="0,0,10,0" Padding="16,0" AutomationProperties.Name="{s:T support.help}" Click="SupportHelp_Click" Style="{StaticResource SecondaryButton}">
                                 <StackPanel Orientation="Horizontal">
                                     <Path Width="14" Height="14" Margin="0,0,8,0" Data="{StaticResource IconBook}" Style="{StaticResource Stroke}" />
                                     <TextBlock FontSize="13.5" Text="{s:T support.help}" />
                                 </StackPanel>
                             </Button>
-                            <Button x:Name="SupportNewButton" Height="42" Padding="18,0" Click="SupportNew_Click" Style="{StaticResource PrimaryButton}">
+                            <Button x:Name="SupportNewButton" Height="42" Padding="18,0" AutomationProperties.Name="{s:T support.new}" Click="SupportNew_Click" Style="{StaticResource PrimaryButton}">
                                 <StackPanel Orientation="Horizontal">
                                     <Path Width="13" Height="13" Margin="0,0,8,0" Data="{StaticResource IconPlus}" Stretch="Uniform" Stroke="{StaticResource OnAccentBrush}" StrokeEndLineCap="Round" StrokeStartLineCap="Round" StrokeThickness="2" />
                                     <TextBlock FontSize="13.5" Text="{s:T support.new}" />
@@ -1685,7 +1737,7 @@
                         </Grid.ColumnDefinitions>
                         <Border Padding="8" Style="{StaticResource Panel}">
                             <Grid>
-                                <ListBox x:Name="SupportList" ItemTemplate="{StaticResource SupportRowTemplate}" SelectionChanged="SupportList_SelectionChanged" Style="{StaticResource PlainList}" />
+                                <ListBox x:Name="SupportList" ItemContainerStyle="{StaticResource SupportListItem}" ItemTemplate="{StaticResource SupportRowTemplate}" SelectionChanged="SupportList_SelectionChanged" Style="{StaticResource PlainList}" />
                                 <TextBlock x:Name="SupportListEmpty" Margin="18" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource Small}" Text="{s:T support.empty}" TextAlignment="Center" TextWrapping="Wrap" Visibility="Collapsed" />
                                 <Ellipse x:Name="SupportListSpinner" Style="{StaticResource Spinner}" Visibility="Collapsed" />
                             </Grid>
@@ -1704,12 +1756,12 @@
                                     <StackPanel Margin="28,24,28,24">
                                         <TextBlock Style="{StaticResource H2}" Text="{s:T support.new}" />
                                         <TextBlock Margin="2,20,0,8" Style="{StaticResource FieldLabel}" Text="{s:T support.subject}" />
-                                        <TextBox x:Name="SupportSubjectBox" MaxLength="160" Style="{StaticResource Field}" Tag="{s:T support.subjectHint}" />
+                                        <TextBox x:Name="SupportSubjectBox" MaxLength="160" AutomationProperties.Name="{s:T support.subject}" Style="{StaticResource Field}" Tag="{s:T support.subjectHint}" />
                                         <TextBlock Margin="2,16,0,8" Style="{StaticResource FieldLabel}" Text="{s:T support.message}" />
-                                        <TextBox x:Name="SupportMessageBox" MinHeight="140" MaxHeight="260" MaxLength="8000" Style="{StaticResource TextArea}" Tag="{s:T support.messageHint}" />
+                                        <TextBox x:Name="SupportMessageBox" MinHeight="140" AutomationProperties.Name="{s:T support.message}" MaxHeight="260" MaxLength="8000" Style="{StaticResource TextArea}" Tag="{s:T support.messageHint}" />
                                         <WrapPanel x:Name="SupportNewFiles" Margin="0,12,0,0" />
                                         <Grid Margin="0,6,0,0">
-                                            <Button HorizontalAlignment="Left" Click="SupportAttachNew_Click" Style="{StaticResource LinkButton}">
+                                            <Button HorizontalAlignment="Left" AutomationProperties.Name="{s:T support.attach}" Click="SupportAttachNew_Click" Style="{StaticResource LinkButton}">
                                                 <StackPanel Orientation="Horizontal">
                                                     <Path Width="14" Height="14" Margin="0,0,7,0" Data="{StaticResource IconClip}" Stretch="Uniform" Stroke="{StaticResource LilacBrush}" StrokeThickness="1.7" />
                                                     <TextBlock Text="{s:T support.attach}" />
@@ -1727,19 +1779,19 @@
                                                     <TextBlock FontSize="14" FontWeight="Medium" Text="{s:T support.diagnostics}" />
                                                     <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T support.diagnosticsHint}" TextWrapping="Wrap" />
                                                 </StackPanel>
-                                                <CheckBox x:Name="SupportDiagnostics" Grid.Column="1" IsChecked="True" Style="{StaticResource Switch}" />
+                                                <CheckBox x:Name="SupportDiagnostics" Grid.Column="1" AutomationProperties.Name="{s:T support.diagnostics}" AutomationProperties.HelpText="{s:T support.diagnosticsHint}" IsChecked="True" Style="{StaticResource Switch}" />
                                             </Grid>
                                         </Border>
                                         <Border x:Name="SupportErrorBox" Margin="0,16,0,0" Padding="14,10" Background="#1AFF6B7A" BorderBrush="#59FF6B7A" BorderThickness="1" CornerRadius="16" Visibility="Collapsed">
                                             <TextBlock x:Name="SupportErrorText" FontSize="13" Foreground="#FFA3AE" TextWrapping="Wrap" />
                                         </Border>
                                         <StackPanel Margin="0,20,0,0" HorizontalAlignment="Right" Orientation="Horizontal">
-                                            <Button Height="46" Margin="0,0,10,0" Padding="18,0" Click="SupportCancelNew_Click" Style="{StaticResource SecondaryButton}">
+                                            <Button Height="46" Margin="0,0,10,0" Padding="18,0" AutomationProperties.Name="{s:T support.cancel}" Click="SupportCancelNew_Click" Style="{StaticResource SecondaryButton}">
                                                 <TextBlock FontSize="14" Text="{s:T support.cancel}" />
                                             </Button>
-                                            <Button x:Name="SupportCreateButton" Height="46" Padding="22,0" Click="SupportCreate_Click" Style="{StaticResource PrimaryButton}">
+                                            <Button x:Name="SupportCreateButton" Height="46" Padding="22,0" AutomationProperties.Name="{s:T support.create}" Click="SupportCreate_Click" Style="{StaticResource PrimaryButton}">
                                                 <StackPanel Orientation="Horizontal">
-                                                    <Ellipse x:Name="SupportCreateSpinner" Margin="0,0,10,0" Stroke="{StaticResource OnAccentBrush}" Style="{StaticResource Spinner}" Visibility="Collapsed" />
+                                                    <Ellipse x:Name="SupportCreateSpinner" Margin="0,0,10,0" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Style="{StaticResource Spinner}" Visibility="Collapsed" />
                                                     <TextBlock FontSize="14" Text="{s:T support.create}" />
                                                 </StackPanel>
                                             </Button>
@@ -1761,7 +1813,7 @@
                                             </Grid.ColumnDefinitions>
                                             <TextBlock x:Name="SupportThreadTitle" VerticalAlignment="Center" Style="{StaticResource H2}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                                             <Border x:Name="SupportThreadStatus" Grid.Column="1" Margin="12,0,0,0" Padding="10,4" VerticalAlignment="Center" CornerRadius="9">
-                                                <TextBlock x:Name="SupportThreadStatusText" FontSize="11" FontWeight="SemiBold" />
+                                                <TextBlock x:Name="SupportThreadStatusText" FontSize="12" FontWeight="SemiBold" />
                                             </Border>
                                         </Grid>
                                     </Border>
@@ -1778,14 +1830,14 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <Button Margin="0,0,8,0" VerticalAlignment="Bottom" Click="SupportAttachReply_Click" Style="{StaticResource IconButton}" ToolTip="{s:T support.attach}">
+                                                <Button Margin="0,0,8,0" VerticalAlignment="Bottom" AutomationProperties.Name="{s:T support.attach}" Click="SupportAttachReply_Click" Style="{StaticResource IconButton}" ToolTip="{s:T support.attach}">
                                                     <Path Data="{StaticResource IconClip}" Style="{StaticResource Stroke}" />
                                                 </Button>
-                                                <TextBox x:Name="SupportReplyBox" Grid.Column="1" MinHeight="48" MaxHeight="150" MaxLength="8000" PreviewKeyDown="SupportReply_PreviewKeyDown" Style="{StaticResource TextArea}" Tag="{s:T support.reply}" />
-                                                <Button x:Name="SupportSendButton" Grid.Column="2" Width="48" Height="48" Margin="10,0,0,0" Padding="0" VerticalAlignment="Bottom" Click="SupportSend_Click" Style="{StaticResource PrimaryButton}" ToolTip="{s:T support.send}">
+                                                <TextBox x:Name="SupportReplyBox" Grid.Column="1" MinHeight="48" AutomationProperties.Name="{s:T support.reply}" MaxHeight="150" MaxLength="8000" PreviewKeyDown="SupportReply_PreviewKeyDown" Style="{StaticResource TextArea}" Tag="{s:T support.reply}" />
+                                                <Button x:Name="SupportSendButton" Grid.Column="2" Width="48" Height="48" Margin="10,0,0,0" Padding="0" VerticalAlignment="Bottom" AutomationProperties.Name="{s:T support.send}" Click="SupportSend_Click" Style="{StaticResource PrimaryButton}" ToolTip="{s:T support.send}">
                                                     <Grid>
-                                                        <Path x:Name="SupportSendIcon" Width="17" Height="17" Data="{StaticResource IconSend}" Stretch="Uniform" Stroke="{StaticResource OnAccentBrush}" StrokeEndLineCap="Round" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeThickness="2" />
-                                                        <Ellipse x:Name="SupportSendSpinner" Stroke="{StaticResource OnAccentBrush}" Style="{StaticResource Spinner}" Visibility="Collapsed" />
+                                                        <Path x:Name="SupportSendIcon" Width="17" Height="17" Data="{StaticResource IconSend}" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeEndLineCap="Round" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeThickness="2" />
+                                                        <Ellipse x:Name="SupportSendSpinner" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Style="{StaticResource Spinner}" Visibility="Collapsed" />
                                                     </Grid>
                                                 </Button>
                                             </Grid>
@@ -1814,7 +1866,7 @@
                                                 <TextBlock Style="{StaticResource H2}" Text="{s:T bot.title}" />
                                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource Small}" Text="{s:T bot.sub}" TextWrapping="Wrap" />
                                             </StackPanel>
-                                            <Button Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" Click="SupportChatReset_Click" Content="{s:T bot.new}" Style="{StaticResource LinkButton}" />
+                                            <Button Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="{s:T bot.new}" Click="SupportChatReset_Click" Content="{s:T bot.new}" Style="{StaticResource LinkButton}" />
                                         </Grid>
                                     </Border>
                                     <ScrollViewer x:Name="SupportChatScroll" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
@@ -1826,14 +1878,14 @@
                                                 <StackPanel>
                                                     <TextBlock FontSize="14" FontWeight="Medium" Text="{s:T bot.handoverTitle}" />
                                                     <TextBlock Margin="0,4,0,10" Style="{StaticResource Small}" Text="{s:T bot.handoverLead}" TextWrapping="Wrap" />
-                                                    <TextBox x:Name="SupportChatNote" MinHeight="44" MaxHeight="120" MaxLength="2000" Style="{StaticResource TextArea}" Tag="{s:T bot.handoverNote}" />
+                                                    <TextBox x:Name="SupportChatNote" MinHeight="44" AutomationProperties.Name="{s:T bot.handoverNote}" MaxHeight="120" MaxLength="2000" Style="{StaticResource TextArea}" Tag="{s:T bot.handoverNote}" />
                                                     <StackPanel Margin="0,10,0,0" HorizontalAlignment="Right" Orientation="Horizontal">
-                                                        <Button Height="40" Margin="0,0,10,0" Padding="16,0" Click="SupportChatHandoverCancel_Click" Style="{StaticResource SecondaryButton}">
+                                                        <Button Height="40" Margin="0,0,10,0" Padding="16,0" AutomationProperties.Name="{s:T support.cancel}" Click="SupportChatHandoverCancel_Click" Style="{StaticResource SecondaryButton}">
                                                             <TextBlock FontSize="13.5" Text="{s:T support.cancel}" />
                                                         </Button>
-                                                        <Button x:Name="SupportChatHandoverButton" Height="40" Padding="18,0" Click="SupportChatHandover_Click" Style="{StaticResource PrimaryButton}">
+                                                        <Button x:Name="SupportChatHandoverButton" Height="40" Padding="18,0" AutomationProperties.Name="{s:T bot.handover}" Click="SupportChatHandover_Click" Style="{StaticResource PrimaryButton}">
                                                             <StackPanel Orientation="Horizontal">
-                                                                <Ellipse x:Name="SupportChatHandoverSpinner" Margin="0,0,10,0" Stroke="{StaticResource OnAccentBrush}" Style="{StaticResource Spinner}" Visibility="Collapsed" />
+                                                                <Ellipse x:Name="SupportChatHandoverSpinner" Margin="0,0,10,0" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Style="{StaticResource Spinner}" Visibility="Collapsed" />
                                                                 <TextBlock FontSize="13.5" Text="{s:T bot.handover}" />
                                                             </StackPanel>
                                                         </Button>
@@ -1845,9 +1897,9 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBox x:Name="SupportChatBox" MinHeight="48" MaxHeight="150" MaxLength="1500" PreviewKeyDown="SupportChatBox_PreviewKeyDown" Style="{StaticResource TextArea}" Tag="{s:T bot.placeholder}" />
-                                                <Button x:Name="SupportChatSendButton" Grid.Column="1" Width="48" Height="48" Margin="10,0,0,0" Padding="0" VerticalAlignment="Bottom" Click="SupportChatSend_Click" Style="{StaticResource PrimaryButton}" ToolTip="{s:T support.send}">
-                                                    <Path Width="17" Height="17" Data="{StaticResource IconSend}" Stretch="Uniform" Stroke="{StaticResource OnAccentBrush}" StrokeEndLineCap="Round" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeThickness="2" />
+                                                <TextBox x:Name="SupportChatBox" MinHeight="48" AutomationProperties.Name="{s:T bot.placeholder}" MaxHeight="150" MaxLength="1500" PreviewKeyDown="SupportChatBox_PreviewKeyDown" Style="{StaticResource TextArea}" Tag="{s:T bot.placeholder}" />
+                                                <Button x:Name="SupportChatSendButton" Grid.Column="1" Width="48" Height="48" Margin="10,0,0,0" Padding="0" VerticalAlignment="Bottom" AutomationProperties.Name="{s:T support.send}" Click="SupportChatSend_Click" Style="{StaticResource PrimaryButton}" ToolTip="{s:T support.send}">
+                                                    <Path Width="17" Height="17" Data="{StaticResource IconSend}" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeEndLineCap="Round" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeThickness="2" />
                                                 </Button>
                                             </Grid>
                                         </StackPanel>
@@ -1951,7 +2003,7 @@
             <StackPanel>
                 <Grid>
                     <TextBlock VerticalAlignment="Center" Style="{StaticResource Kicker}" Text="{s:T survey.kicker}" />
-                    <Button HorizontalAlignment="Right" Click="SurveyClose_Click" Style="{StaticResource IconButton}" ToolTip="{s:T survey.close}">
+                    <Button HorizontalAlignment="Right" AutomationProperties.Name="{s:T survey.close}" Click="SurveyClose_Click" Style="{StaticResource IconButton}" ToolTip="{s:T survey.close}">
                         <Path Width="12" Height="12" Data="{StaticResource IconX}" Style="{StaticResource Stroke}" />
                     </Button>
                 </Grid>
@@ -2013,10 +2065,10 @@
 
         <!-- Window controls (always on top) -->
         <StackPanel Margin="0,15,16,0" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal">
-            <Button Click="Minimize_Click" Style="{StaticResource WindowButton}" ToolTip="{s:T window.minimize}">
+            <Button AutomationProperties.Name="{s:T window.minimize}" Click="Minimize_Click" Style="{StaticResource WindowButton}" ToolTip="{s:T window.minimize}">
                 <Path Width="12" Height="12" Data="{StaticResource IconMinus}" Style="{StaticResource Stroke}" />
             </Button>
-            <Button Margin="6,0,0,0" Click="Close_Click" Style="{StaticResource WindowCloseButton}" ToolTip="{s:T window.close}">
+            <Button Margin="6,0,0,0" AutomationProperties.Name="{s:T window.close}" Click="Close_Click" Style="{StaticResource WindowCloseButton}" ToolTip="{s:T window.close}">
                 <Path Width="11" Height="11" Data="{StaticResource IconX}" Style="{StaticResource Stroke}" />
             </Button>
         </StackPanel>

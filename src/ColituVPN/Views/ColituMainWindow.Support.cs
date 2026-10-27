@@ -565,7 +565,7 @@ public partial class ColituMainWindow
                     Text = local.ToString("D", Loc.I.Culture),
                     Margin = new Thickness(0, 10, 0, 12),
                     HorizontalAlignment = HorizontalAlignment.Center,
-                    FontSize = 11.5,
+                    FontSize = 12,
                     Foreground = (Brush)FindResource("DimBrush")
                 });
             }
@@ -613,10 +613,10 @@ public partial class ColituMainWindow
         body.Children.Add(new TextBlock
         {
             Text = local.ToString("t", Loc.I.Culture),
-            FontSize = 10.5,
+            FontSize = 12,
             Margin = new Thickness(0, 6, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Right,
-            Foreground = mine ? new SolidColorBrush(Color.FromArgb(0x99, 0x0B, 0x0A, 0x14)) : (Brush)FindResource("DimBrush")
+            Foreground = mine ? new SolidColorBrush(Color.FromArgb(0xCC, 0x0B, 0x0A, 0x14)) : (Brush)FindResource("DimBrush")
         });
 
         var bubble = new Border
@@ -919,6 +919,17 @@ public sealed class ColituSupportRow
     public string StatusText { get; init; } = "";
     public Brush? StatusBackground { get; init; }
     public Brush? StatusForeground { get; init; }
+
+    /// <summary>What a screen reader says for the row: subject, status, unread count and time (not the class name).</summary>
+    public string AccessibleName => string.Join(", ", new[]
+    {
+        Title,
+        StatusText,
+        Unread > 0 ? $"{Unread} {Loc.I["a11y.unread"]}" : null,
+        TimeText
+    }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+    public override string ToString() => AccessibleName;
 
     public static ColituSupportRow From(ColituSupportConversation conversation)
     {

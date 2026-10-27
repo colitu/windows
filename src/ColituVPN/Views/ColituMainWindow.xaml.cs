@@ -77,6 +77,9 @@ public partial class ColituMainWindow
         Activated += async (_, _) => await AnswerDiagnosticsRequestAsync();
         Root.SizeChanged += (_, _) => UpdateRootClip();
         HeaderBar.SizeChanged += (_, _) => FitNav();
+        HomeLeftScroll.SizeChanged += (_, _) => FitHomeOrb();
+        HomeStatus.SizeChanged += (_, _) => FitHomeOrb();
+        HomeQuick.SizeChanged += (_, _) => FitHomeOrb();
 
         BuildLanguageSelectors();
         InitPassport();
@@ -792,6 +795,64 @@ public partial class ColituMainWindow
     }
 
     private async void TrayExit_Click(object sender, RoutedEventArgs e) => await ExitAsync();
+
+    /// <summary>
+    /// Rebuilt every time the tray menu opens: "Fastest server" and up to three favourite / recent
+    /// servers between Connect and Quit, the current choice ticked. Picking one does what the
+    /// Locations row does (a live tunnel moves over).
+    /// </summary>
+    private void TrayMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        var menu = TrayMenu;
+        foreach (var stale in menu.Items.OfType<FrameworkElement>().Where(item => Equals(item.Tag, TrayServerTag)).ToList())
+        {
+            menu.Items.Remove(stale);
+        }
+        if (AppView.Visibility != Visibility.Visible || !_auth.HasSession)
+        {
+            return;
+        }
+
+        var index = menu.Items.IndexOf(TrayExitSeparator);
+        void Add(FrameworkElement item)
+        {
+            item.Tag = TrayServerTag;
+            menu.Items.Insert(index++, item);
+        }
+
+        Add(new Separator());
+        var auto = _vpn.IsAutoSelection;
+        var fastest = new MenuItem { Header = Loc.I["tray.fastest"], IsCheckable = true, IsChecked = auto };
+        fastest.Click += async (_, _) => await TrayPickAsync(null, Loc.I["server.auto"]);
+        Add(fastest);
+        var pickedId = auto ? null : _vpn.SavedServerId;
+        foreach (var server in ShortcutServers())
+        {
+            var title = ColituServerRow.From(server).Title;
+            var item = new MenuItem
+            {
+                Header = title,
+                IsCheckable = true,
+                IsChecked = string.Equals(server.Id, pickedId, StringComparison.OrdinalIgnoreCase)
+            };
+            item.Click += async (_, _) => await TrayPickAsync(server, title);
+            Add(item);
+        }
+    }
+
+    private const string TrayServerTag = "tray-server";
+
+    private async Task TrayPickAsync(ColituVpnServer? server, string title)
+    {
+        try
+        {
+            await PickServerAsync(server, title);
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("ColituMainWindow.TrayPickAsync", ex);
+        }
+    }
 
     private async Task ExitAsync()
     {

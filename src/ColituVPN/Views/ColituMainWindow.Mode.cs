@@ -59,6 +59,7 @@ public partial class ColituMainWindow
         QuickSettingsCard.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
         HomeAdvancedButton.Visibility = advanced ? Visibility.Collapsed : Visibility.Visible;
         AdvancedSettingsOnButton.Visibility = !advanced && _vpn.AdvancedSettingsActive ? Visibility.Visible : Visibility.Collapsed;
+        Dispatcher.BeginInvoke(FitHomeOrb, DispatcherPriority.Loaded);
     }
 
     private void SetUiMode(bool advanced)

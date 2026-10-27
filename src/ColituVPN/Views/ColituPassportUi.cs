@@ -20,7 +20,8 @@ internal static class PassportUi
 {
     public static readonly Brush Text = Frozen(Color.FromRgb(0xF4, 0xF3, 0xFA));
     public static readonly Brush Muted = Frozen(Color.FromRgb(0xA9, 0xAD, 0xC2));
-    public static readonly Brush Dim = Frozen(Color.FromRgb(0x6F, 0x71, 0x86));
+    // Faint text: 5:1 on the passport cards (was #6F7186, 3.7:1).
+    public static readonly Brush Dim = Frozen(Color.FromRgb(0x8B, 0x8D, 0xA2));
     public static readonly Brush Lilac = Frozen(Color.FromRgb(0xC4, 0xB5, 0xFD));
     public static readonly Brush Line = Frozen(Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
     public static readonly Brush Glass10 = Frozen(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
@@ -361,12 +362,15 @@ internal static class PassportUi
 
     // ── Text and cards ───────────────────────────────────────────────────
 
+    public const double MinFontSize = 12;
+
     public static TextBlock Label(string text, double size = 14, Brush? brush = null, FontWeight? weight = null, TextAlignment align = TextAlignment.Left, bool wrap = true)
     {
         return new TextBlock
         {
             Text = text,
-            FontSize = size,
+            // No text under 12 (readability); icons draw their own glyphs.
+            FontSize = Math.Max(MinFontSize, size),
             Foreground = brush ?? Text,
             FontWeight = weight ?? FontWeights.Normal,
             TextAlignment = align,

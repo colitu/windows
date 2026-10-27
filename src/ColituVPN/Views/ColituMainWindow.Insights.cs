@@ -143,8 +143,8 @@ public partial class ColituMainWindow
 
             var labels = new Grid { Margin = new Thickness(6, 8, 6, 0) };
             var kind = survey.Kind == ColituSurvey.Nps ? "nps" : "csat";
-            labels.Children.Add(new TextBlock { Text = loc[$"survey.{kind}.low"], FontSize = 11.5, Foreground = (Brush)FindResource("DimBrush"), HorizontalAlignment = HorizontalAlignment.Left });
-            labels.Children.Add(new TextBlock { Text = loc[$"survey.{kind}.high"], FontSize = 11.5, Foreground = (Brush)FindResource("DimBrush"), HorizontalAlignment = HorizontalAlignment.Right });
+            labels.Children.Add(new TextBlock { Text = loc[$"survey.{kind}.low"], FontSize = 12, Foreground = (Brush)FindResource("DimBrush"), HorizontalAlignment = HorizontalAlignment.Left });
+            labels.Children.Add(new TextBlock { Text = loc[$"survey.{kind}.high"], FontSize = 12, Foreground = (Brush)FindResource("DimBrush"), HorizontalAlignment = HorizontalAlignment.Right });
             SurveyBody.Children.Add(labels);
         }
         else

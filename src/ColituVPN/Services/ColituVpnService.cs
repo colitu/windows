@@ -238,6 +238,33 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         SaveState();
     }
 
+    /// <summary>Starred servers, newest first (<see cref="ColituServerPicks"/>); kept with the other preferences.</summary>
+    public IReadOnlyList<string> FavoriteServerIds => Preferences.FavoriteServerIds ?? [];
+
+    /// <summary>The last three servers connected to, newest first.</summary>
+    public IReadOnlyList<string> RecentServerIds => Preferences.RecentServerIds ?? [];
+
+    /// <summary>Stars or unstars a server; true when it is a favourite now.</summary>
+    public bool ToggleFavoriteServer(string id)
+    {
+        var favorites = ColituServerPicks.ToggleFavorite(FavoriteServerIds, id, out var added);
+        _session = _session with { Preferences = _session.Preferences with { FavoriteServerIds = favorites } };
+        SaveState();
+        return added;
+    }
+
+    /// <summary>Remembers a server the tunnel came up on (saved only when the list changes).</summary>
+    public void RememberRecentServer(string? id)
+    {
+        var recent = ColituServerPicks.AddRecent(RecentServerIds, id);
+        if (recent.SequenceEqual(RecentServerIds, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+        _session = _session with { Preferences = _session.Preferences with { RecentServerIds = recent } };
+        SaveState();
+    }
+
     /// <summary>The connection method picked on the home screen ("" = automatic); the next connect tries it first.</summary>
     public string PreferredTransport => Preferences.PreferredTransport;
 
@@ -5780,7 +5807,11 @@ public sealed record ColituVpnPreferences(
     string PreferredTransport = "",
     // Expiry of the last Premium (bought, gifted or from an invite) seen on this install: back on the free
     // plan, home says once that it ended (ColituUpsell). Cleared when the user closes that banner.
-    string? PremiumSeenUntil = null)
+    string? PremiumSeenUntil = null,
+    // Starred servers (ids), newest first: Locations, Home and the tray offer them (ColituServerPicks).
+    List<string>? FavoriteServerIds = null,
+    // The last three servers connected to (ids), newest first.
+    List<string>? RecentServerIds = null)
 {
     /// <summary>
     /// Preferences of a first run (no saved state yet): privacy mode on, Simple mode. The record
@@ -5807,7 +5838,9 @@ public sealed record ColituVpnPreferences(
             Language = language,
             ConnectionMode = connectionMode,
             LocationSort = ColituLocationSort.Normalize(LocationSort),
-            PreferredTransport = ColituTransportChoice.Normalize(PreferredTransport)
+            PreferredTransport = ColituTransportChoice.Normalize(PreferredTransport),
+            FavoriteServerIds = ColituServerPicks.Normalize(FavoriteServerIds, ColituServerPicks.MaxFavorites),
+            RecentServerIds = ColituServerPicks.Normalize(RecentServerIds, ColituServerPicks.MaxRecent)
         };
     }
 

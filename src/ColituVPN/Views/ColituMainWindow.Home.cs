@@ -112,6 +112,20 @@ public partial class ColituMainWindow
             : _upsell.BlocksConnect ? loc["upsell.cta"]
             : loc["home.tap"];
         ConnectButton.ToolTip = on ? loc["home.disconnect"] : busy ? loc["home.cancel"] : loc["home.connect"];
+        // Screen readers: what the button does now ("Connect" / "Disconnect"), not just "button".
+        System.Windows.Automation.AutomationProperties.SetName(ConnectButton, loc[on || busy ? "home.disconnect" : "home.connect"]);
+        if (on && !_vpn.IsAutoSelection && _vpn.ConnectedServer?.Id is { Length: > 0 } connectedId)
+        {
+            // Recently used: a server the user picked and the tunnel came up on (not the automatic choice).
+            try
+            {
+                _vpn.RememberRecentServer(connectedId);
+            }
+            catch (Exception ex)
+            {
+                Logging.SaveLog("ColituMainWindow.RememberRecentServer", ex);
+            }
+        }
         // Connected: the method in use. Otherwise the pick for the next connect (automatic when none).
         var protocol = on && _vpn.ConnectedProtocol is { Length: > 0 } active ? active : _vpn.PreferredTransport;
         var method = protocol.Length > 0 ? ColituTransportNames.Of(protocol, loc) : loc["transport.auto"];
@@ -429,6 +443,86 @@ public partial class ColituMainWindow
         HomeServerCheck.Background = connected ? (Brush)FindResource("SuccessBrush") : Brushes.Transparent;
         HomeServerCheck.BorderBrush = (Brush)FindResource(connected ? "SuccessBrush" : "DimBrush");
         HomeServerCheckMark.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
+        ApplyServerShortcuts();
+    }
+
+    /// <summary>
+    /// Up to three favourite / recently used servers under "Change server": one click does what a
+    /// click on that row in Locations does. Hidden while there are none.
+    /// </summary>
+    private void ApplyServerShortcuts()
+    {
+        if (HomeShortcuts == null)
+        {
+            return;
+        }
+        HomeShortcuts.Children.Clear();
+        var shortcuts = ShortcutServers();
+        HomeShortcuts.Visibility = shortcuts.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        HomeShortcuts.Columns = Math.Max(1, shortcuts.Count);
+        var pickedId = _vpn.IsAutoSelection ? null : _vpn.SavedServerId;
+        foreach (var server in shortcuts)
+        {
+            var row = ColituServerRow.From(server);
+            var label = Loc.I.Format("home.shortcut", ("server", row.Title));
+            var picked = string.Equals(server.Id, pickedId, StringComparison.OrdinalIgnoreCase);
+            var content = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+            content.Children.Add(new Viewbox
+            {
+                Width = 18,
+                Height = 18,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new ContentPresenter { Content = row, ContentTemplate = (DataTemplate)FindResource(server.IsMultihop ? "FlagPairTemplate" : "FlagTemplate") }
+            });
+            content.Children.Add(new TextBlock { Text = row.Title, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 76 });
+            var button = new Button
+            {
+                Content = content,
+                Height = 32,
+                Padding = new Thickness(8, 0, 8, 0),
+                Margin = new Thickness(3, 0, 3, 0),
+                Style = (Style)FindResource("SecondaryButton"),
+                ToolTip = label,
+                Tag = server
+            };
+            if (picked)
+            {
+                button.BorderBrush = (Brush)FindResource("ActiveTileEdgeBrush");
+            }
+            System.Windows.Automation.AutomationProperties.SetName(button, label);
+            button.Click += ServerShortcut_Click;
+            HomeShortcuts.Children.Add(button);
+        }
+    }
+
+    private async void ServerShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: ColituVpnServer server })
+        {
+            await PickServerAsync(server, ColituServerRow.From(server).Title);
+        }
+    }
+
+    // ── Left column fit ────────────────────────────────────────────────────
+    /// <summary>
+    /// The connect ring gives way so the status and the quick settings fit under it: full size when
+    /// there is room (1600 × 1000), smaller in the smallest window; the column scrolls only below that.
+    /// </summary>
+    private void FitHomeOrb()
+    {
+        if (HomeLeftScroll == null || HomeLeftScroll.ActualHeight <= 0)
+        {
+            return;
+        }
+        var others = HomeStatus.ActualHeight + (HomeQuick.Visibility == Visibility.Visible ? HomeQuick.ActualHeight + HomeQuick.Margin.Top : 0);
+        // The ring's box is 440 tall with -40 / -50 margins, so it takes 440·s − 90.
+        var scale = Math.Clamp((HomeLeftScroll.ActualHeight - others + 90) / 440, 0.62, 1);
+        if (Math.Abs(OrbScale.ScaleX - scale) > 0.005)
+        {
+            OrbScale.ScaleX = scale;
+            OrbScale.ScaleY = scale;
+        }
     }
 
     private static string? ServerLabel(ColituVpnServer? server)
@@ -440,7 +534,18 @@ public partial class ColituMainWindow
         return ColituServerRow.From(server).Title;
     }
 
-    private void LocationCard_Click(object sender, MouseButtonEventArgs e) => Navigate("locations");
+    private void LocationCard_Click(object sender, MouseButtonEventArgs e)
+    {
+        // A click on one of the card's buttons (a server shortcut) is that button's, not the card's.
+        for (var node = e.OriginalSource as DependencyObject; node != null && node != sender; node = VisualTreeHelper.GetParent(node) ?? LogicalTreeHelper.GetParent(node))
+        {
+            if (node is System.Windows.Controls.Primitives.ButtonBase)
+            {
+                return;
+            }
+        }
+        Navigate("locations");
+    }
 
     private void ChangeServer_Click(object sender, RoutedEventArgs e) => Navigate("locations");
 
@@ -485,7 +590,8 @@ public partial class ColituMainWindow
         var free = IsFreePlan(subscription);
         var expiresSoon = active && !free && ExpiresAt(subscription!) is { } end && end - DateTimeOffset.UtcNow < TimeSpan.FromDays(3);
         PlanCtaButton.Visibility = !active || expiresSoon || free ? Visibility.Visible : Visibility.Collapsed;
-        PlanCtaText.Text = free ? loc["plan.upgrade"] : active ? loc["plan.extend"] : loc["plan.choose"];
+        PlanCtaText.Text = free ? loc["upsell.cta"] : active ? loc["plan.extend"] : loc["plan.choose"];
+        System.Windows.Automation.AutomationProperties.SetName(PlanCtaButton, PlanCtaText.Text);
 
         // Account page
         var email = _auth.CurrentUser?.Email ?? "";
@@ -503,7 +609,9 @@ public partial class ColituMainWindow
         }
         AccountPlan.Text = active ? PlanTitle(subscription!) : loc["plan.none"];
         SetBadge(AccountPlanBadge, AccountPlanBadgeText, status);
-        AccountUntil.Text = free ? loc["plan.freeHint"] : ExpiresAt(subscription) is { } until ? FormatDate(until) : "—";
+        AccountUntil.Text = free ? loc["plan.freeHint"]
+            : ExpiresAt(subscription) is { } until ? (ColituBillingService.IsLifetime(until, DateTimeOffset.UtcNow) ? loc["plan.lifetime"] : FormatDate(until))
+            : "—";
 
         // Plan page strip
         CurrentPlanText.Text = active ? $"{PlanTitle(subscription!)} · {PlanDetailText(subscription!)}" : loc["plan.none"];
@@ -540,6 +648,11 @@ public partial class ColituMainWindow
         {
             return "";
         }
+        if (ColituBillingService.IsLifetime(end, DateTimeOffset.UtcNow))
+        {
+            // A lifetime plan ends in 2126: "No expiry", not "36,493 days left".
+            return Loc.I["plan.lifetime"];
+        }
         var left = end - DateTimeOffset.UtcNow;
         var leftText = left.TotalDays >= 1
             ? Loc.I.Count("day", (long)Math.Floor(left.TotalDays))
@@ -572,7 +685,8 @@ public partial class ColituMainWindow
         text.Foreground = (Brush)FindResource(active ? "OnAccentBrush" : "DangerBrush");
     }
 
-    private void PlanCta_Click(object sender, RoutedEventArgs e) => Navigate("plan");
+    /// <summary>Free plan: Plans opens with the plan that fits preselected (<see cref="OpenPlans"/>).</summary>
+    private void PlanCta_Click(object sender, RoutedEventArgs e) => OpenPlans(suggest: IsFreePlan(_auth.CurrentSubscription));
 
     private static string FormatDate(DateTimeOffset value) => value.ToLocalTime().ToString(Loc.I.Language == "zh" ? "yyyy年M月d日" : "d MMMM yyyy", Loc.I.Culture);
 

@@ -12,6 +12,10 @@ namespace v2rayN.Services;
 public sealed class ColituBillingService
 {
     public const string ProviderKyren = "kyren";
+    /// <summary>Rialit: Iranian Shetab cards, charged in toman (panel payment.ProviderRialit).</summary>
+    public const string ProviderRialit = "rialit";
+    /// <summary>Toman, in hundredths like every other currency here (panel payment.CurrencyToman).</summary>
+    public const string CurrencyToman = "IRT";
 
     public static ColituBillingService Instance { get; } = new();
 
@@ -64,13 +68,52 @@ public sealed class ColituBillingService
 
     public static bool IsSettled(string? status) => status is "succeeded" or "failed" or "canceled" or "cancelled" or "expired" or "refunded" or "chargeback";
 
-    /// <summary>The currency a method charges in: Kyren Pay yuan, Platega the catalog's charge currency.</summary>
-    public static string ChargeCurrency(ColituPaymentMethod? method, ColituTierCatalog catalog) =>
-        method?.Provider == ProviderKyren ? "CNY" : catalog.ChargeCurrency;
+    /// <summary>
+    /// The currency a method charges in, as the panel quotes it (payment.QuoteFor): Kyren Pay yuan,
+    /// Rialit (Shetab cards) toman, Platega the catalog's charge currency (roubles).
+    /// </summary>
+    public static string ChargeCurrency(ColituPaymentMethod? method, ColituTierCatalog catalog)
+    {
+        var provider = (method?.Provider is { Length: > 0 } named ? named : method?.Key)?.Trim().ToLowerInvariant();
+        return provider switch
+        {
+            ProviderKyren => "CNY",
+            ProviderRialit => CurrencyToman,
+            _ => catalog.ChargeCurrency
+        };
+    }
+
+    /// <summary>
+    /// A method is offered only when the catalog sells at least one tier in its currency: without a
+    /// toman price list Rialit would be shown with a rouble price it never charges.
+    /// </summary>
+    public static bool IsSellable(ColituPaymentMethod method, ColituTierCatalog catalog)
+    {
+        var currency = ChargeCurrency(method, catalog);
+        return catalog.Tiers.Any(tier => tier.Prices.Any(price => PriceIn(tier, price.IntervalMonths, currency) != null));
+    }
+
+    /// <summary>
+    /// The plan a free user is offered first: the smallest tier with room for the devices already in
+    /// use (at least one), otherwise the largest.
+    /// </summary>
+    public static string? SuggestTier(ColituTierCatalog catalog, int devicesUsed)
+    {
+        var tiers = catalog.Tiers.Where(tier => tier.Plan.Length > 0).OrderBy(tier => tier.Devices).ToList();
+        if (tiers.Count == 0)
+        {
+            return null;
+        }
+        var needed = Math.Max(1, devicesUsed);
+        return (tiers.FirstOrDefault(tier => tier.Devices >= needed) ?? tiers[^1]).Plan;
+    }
+
+    /// <summary>A plan that runs for more than ten years has no real end date ("No expiry" instead of 36,493 days).</summary>
+    public static bool IsLifetime(DateTimeOffset end, DateTimeOffset now) => end - now > TimeSpan.FromDays(3653);
 
     /// <summary>
     /// A tier's price for a period in the currency the chosen method charges:
-    /// the fixed regional price (CNY) or the converted charge price (RUB).
+    /// the fixed regional price (CNY, IRT) or the converted charge price (RUB).
     /// Null when the tier is not sold in that currency for that period.
     /// </summary>
     public static ColituShownPrice? PriceIn(ColituTier tier, int months, string currency)
@@ -82,7 +125,11 @@ public sealed class ColituBillingService
         }
         if (price.Regional != null && price.Regional.TryGetValue(currency, out var regional) && regional.PriceMinor > 0)
         {
-            return new ColituShownPrice(currency, regional.PriceMinor, regional.MonthlyMinor, regional.SavingPercent);
+            // Toman: the monthly figure in whole toman (104,167, not 104,166.66).
+            var monthly = string.Equals(currency, CurrencyToman, StringComparison.OrdinalIgnoreCase)
+                ? (long)Math.Round(regional.MonthlyMinor / 100m, MidpointRounding.AwayFromZero) * 100
+                : regional.MonthlyMinor;
+            return new ColituShownPrice(currency, regional.PriceMinor, monthly, regional.SavingPercent);
         }
         if (string.Equals(price.ChargeCurrency, currency, StringComparison.OrdinalIgnoreCase) && price.ChargeMinor > 0)
         {
@@ -105,9 +152,18 @@ public sealed class ColituBillingService
             "GBP" => $"£{number}",
             "USD" => $"${number}",
             "EUR" => $"€{number}",
+            CurrencyToman => $"{number} {TomanUnit(culture)}",
             var other => $"{number} {other}"
         };
     }
+
+    private static string TomanUnit(IFormatProvider culture) => (culture as CultureInfo)?.TwoLetterISOLanguageName switch
+    {
+        "fa" => "تومان",
+        "ru" => "томан",
+        "zh" => "土曼",
+        _ => "toman"
+    };
 }
 
 public sealed record ColituShownPrice(string Currency, long TotalMinor, long MonthlyMinor, int SavingPercent);

@@ -206,6 +206,8 @@ public sealed partial class Loc : INotifyPropertyChanged
         ["home.unlimited"] = ["Безлимитный трафик", "Sınırsız trafik", "Unlimited traffic", "不限流量", "ترافیک نامحدود"],
         ["home.devices"] = ["Устройства", "Cihazlar", "Devices", "设备", "دستگاه‌ها"],
         ["home.offline"] = ["Нет связи с сервером Colitu. Повторяем попытку…", "Colitu sunucusuna ulaşılamıyor. Yeniden deneniyor…", "Can’t reach Colitu right now. Retrying…", "暂时无法连接 Colitu，正在重试…", "اکنون به Colitu دسترسی نداریم. در حال تلاش مجدد…"],
+        ["home.shortcut"] = ["Переключиться на {server}", "{server} sunucusuna geç", "Switch to {server}", "切换到 {server}", "تغییر به {server}"],
+        ["home.shortcuts"] = ["Избранные и недавние серверы", "Favori ve son kullanılan sunucular", "Favourite and recent servers", "收藏和最近使用的服务器", "سرورهای علاقه‌مندی و اخیر"],
 
         ["server.auto"] = ["Лучший сервер", "En iyi sunucu", "Best server", "最佳服务器", "بهترین سرور"],
         ["server.autoHint"] = ["Colitu сам выберет самый свободный и стабильный", "Colitu en boş ve kararlı sunucuyu kendisi seçer", "Colitu picks the least busy, most stable one", "Colitu 会选择最空闲、最稳定的服务器", "Colitu کم‌بارترین و پایدارترین سرور را انتخاب می‌کند"],
@@ -229,6 +231,15 @@ public sealed partial class Loc : INotifyPropertyChanged
         ["locations.sort.load"] = ["По нагрузке", "Yüke göre", "By load", "按负载", "بار"],
         ["locations.switching"] = ["Переключаемся на {server}…", "{server} konumuna geçiliyor…", "Switching to {server}…", "正在切换到 {server}…", "در حال تغییر به {server}…"],
         ["locations.switched"] = ["Подключено: {server}", "Bağlandı: {server}", "Connected to {server}", "已连接到 {server}", "به {server} وصل شدید"],
+        ["locations.favorites"] = ["ИЗБРАННОЕ", "FAVORİLER", "FAVOURITES", "收藏", "علاقه‌مندی‌ها"],
+        ["locations.recent"] = ["НЕДАВНИЕ", "SON KULLANILANLAR", "RECENTLY USED", "最近使用", "اخیراً استفاده‌شده"],
+        ["locations.all"] = ["ВСЕ ЛОКАЦИИ", "TÜM KONUMLAR", "ALL LOCATIONS", "全部位置", "همهٔ مکان‌ها"],
+        ["locations.favoriteAdd"] = ["Добавить в избранное", "Favorilere ekle", "Add to favourites", "加入收藏", "افزودن به علاقه‌مندی‌ها"],
+        ["locations.favoriteRemove"] = ["Убрать из избранного", "Favorilerden çıkar", "Remove from favourites", "取消收藏", "حذف از علاقه‌مندی‌ها"],
+        ["locations.favorite"] = ["в избранном", "favori", "favourite", "已收藏", "علاقه‌مندی"],
+        ["a11y.expanded"] = ["развёрнуто", "açık", "expanded", "已展开", "باز"],
+        ["a11y.collapsed"] = ["свёрнуто", "kapalı", "collapsed", "已折叠", "بسته"],
+        ["a11y.unread"] = ["непрочитанных", "okunmamış", "unread", "条未读", "خوانده‌نشده"],
 
         // Plan status
         ["plan.none"] = ["Нет активного тарифа", "Aktif paket yok", "No active plan", "没有有效套餐", "طرح فعالی وجود ندارد"],
@@ -273,6 +284,7 @@ public sealed partial class Loc : INotifyPropertyChanged
         ["location.one"] = ["{n} локация", "{n} konum", "{n} location", "{n} 个位置", "{n} مکان"],
         ["location.few"] = ["{n} локации", "{n} konum", "{n} locations", "{n} 个位置", "{n} مکان"],
         ["location.many"] = ["{n} локаций", "{n} konum", "{n} locations", "{n} 个位置", "{n} مکان"],
+        ["plan.lifetime"] = ["Бессрочно", "Süresiz", "No expiry", "永久有效", "بدون انقضا"],
 
         // Pricing (same wording as colitu.com/pricing)
         ["pricing.kicker"] = ["ТАРИФЫ", "PAKETLER", "PLANS", "套餐", "طرح‌ها"],
@@ -330,6 +342,11 @@ public sealed partial class Loc : INotifyPropertyChanged
         ["method.kyren"] = ["Alipay / WeChat Pay", "Alipay / WeChat Pay", "Alipay / WeChat Pay", "支付宝 / 微信支付", "Alipay / WeChat Pay"],
         ["currency.rub"] = ["В рублях (₽)", "Ruble ile (₽)", "In roubles (₽)", "以卢布支付（₽）", "به روبل (₽)"],
         ["currency.cny"] = ["В юанях (¥)", "Yuan ile (¥)", "In yuan (¥)", "以人民币支付（¥）", "به یوان (¥)"],
+        ["method.rialit"] = ["Карта Shetab", "Shetab kartı", "Shetab card", "Shetab 银行卡", "کارت شتاب"],
+        ["currency.irt"] = ["В туманах (IRT)", "Toman ile (IRT)", "In toman (IRT)", "以土曼支付（IRT）", "به تومان (IRT)"],
+        ["pricing.calculating"] = ["Считаем цену…", "Fiyat hesaplanıyor…", "Calculating price…", "正在计算价格…", "در حال محاسبهٔ قیمت…"],
+        ["pricing.quoteFailed"] = ["Не удалось получить цену. Проверьте соединение и повторите.", "Fiyat alınamadı. Bağlantınızı kontrol edip tekrar deneyin.", "Couldn’t get the price. Check your connection and try again.", "无法获取价格。请检查网络后重试。", "دریافت قیمت ممکن نشد. اتصال خود را بررسی کنید و دوباره تلاش کنید."],
+        ["pricing.quoteUnavailable"] = ["Этот способ оплаты сейчас недоступен. Выберите другой.", "Bu ödeme yöntemi şu an kullanılamıyor. Başka bir yöntem seçin.", "This payment method isn’t available right now. Pick another one.", "此付款方式暂不可用，请选择其他方式。", "این روش پرداخت اکنون در دسترس نیست. روش دیگری انتخاب کنید."],
 
         // Account
         ["account.kicker"] = ["АККАУНТ", "HESAP", "ACCOUNT", "账户", "حساب"],
@@ -691,6 +708,7 @@ public sealed partial class Loc : INotifyPropertyChanged
         ["tray.disconnect"] = ["Отключить", "Bağlantıyı kes", "Disconnect", "断开", "قطع اتصال"],
         ["tray.exit"] = ["Выйти из Colitu", "Colitu’dan çık", "Quit Colitu", "退出 Colitu", "خروج از Colitu"],
         ["tray.hidden"] = ["Colitu работает в трее. Защита остаётся включённой.", "Colitu tepside çalışıyor. Koruma açık kalır.", "Colitu is still running in the tray. Protection stays on.", "Colitu 仍在托盘中运行，保护保持开启。", "Colitu همچنان در سینی اجرا می‌شود. محافظت روشن می‌ماند."],
+        ["tray.fastest"] = ["Самый быстрый сервер", "En hızlı sunucu", "Fastest server", "最快的服务器", "سریع‌ترین سرور"],
         // Adaptive Connect: "best server" moves on when a server carries no traffic on this network.
         ["connect.tryingOther"] = ["Пробуем другой сервер…", "Başka sunucu deneniyor…", "Trying another server…", "正在尝试其他服务器…", "در حال امتحان سرور دیگر…"],
         ["server.autoNow"] = ["Сейчас: {server}", "Şu an: {server}", "Now: {server}", "当前：{server}", "اکنون: {server}"],

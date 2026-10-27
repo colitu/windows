@@ -41,7 +41,8 @@ public partial class ColituMainWindow
                     IsChecked = category == _category,
                     MinHeight = 36,
                     FontSize = 13.5,
-                    Opacity = category == "all" || count > 0 ? 1 : 0.55
+                    // An empty filter ("Torrent 0") is fainter but still 3:1 readable.
+                    Opacity = category == "all" || count > 0 ? 1 : 0.72
                 };
                 option.Checked += Category_Checked;
                 CategoryList.Children.Add(option);
@@ -132,16 +133,34 @@ public partial class ColituMainWindow
         var connectedId = _vpn.Status == ColituVpnStatus.Connected ? _vpn.ConnectedServer?.Id : null;
         var rows = new List<ColituServerRow>();
         var auto = ColituServerRow.Auto(ServerLabel(_vpn.RecommendedServer));
-        if (query.Length == 0 && !filtered)
-        {
-            rows.Add(auto);
-        }
 
         ColituServerRow BuildRow(ColituVpnServer server, bool city = false)
         {
             var row = ColituServerRow.From(server, _pings.TryGetValue(server.Id ?? "", out var ping) ? ping : null, city);
             row.MarkState(server.Id == connectedId, server.Id == _vpn.SavedServerId && !_vpn.IsAutoSelection);
             return row;
+        }
+
+        if (query.Length == 0 && !filtered)
+        {
+            rows.Add(auto);
+            // Right under "Best server": the starred servers, then the recently used ones (not repeated).
+            var favorites = ResolveServers(_vpn.FavoriteServerIds);
+            var recent = ResolveServers(_vpn.RecentServerIds).Where(server => !favorites.Contains(server)).ToList();
+            if (favorites.Count > 0)
+            {
+                rows.Add(ColituServerRow.Header(Loc.I["locations.favorites"]));
+                rows.AddRange(favorites.Select(server => BuildRow(server)));
+            }
+            if (recent.Count > 0)
+            {
+                rows.Add(ColituServerRow.Header(Loc.I["locations.recent"]));
+                rows.AddRange(recent.Select(server => BuildRow(server)));
+            }
+            if (favorites.Count + recent.Count > 0)
+            {
+                rows.Add(ColituServerRow.Header(Loc.I["locations.all"]));
+            }
         }
 
         // The country of the picked (or connected) server starts open; after that the user decides.
@@ -208,6 +227,10 @@ public partial class ColituMainWindow
         }
 
         auto.MarkState(_vpn.IsAutoSelection && _vpn.Status == ColituVpnStatus.Connected, _vpn.IsAutoSelection);
+        foreach (var row in rows)
+        {
+            row.IsFavorite = ColituServerPicks.Contains(_vpn.FavoriteServerIds, row.Server?.Id);
+        }
 
         _renderingServers = true;
         try
@@ -236,13 +259,52 @@ public partial class ColituMainWindow
         {
             _expandedGroups.Add(key);
         }
+        RenderServersKeepingScroll();
+    }
 
-        // Rebuilding the list resets the scroll position; put it back (item-based offset).
+    /// <summary>Rebuilding the list resets the scroll position; put it back (item-based offset).</summary>
+    private void RenderServersKeepingScroll()
+    {
         var scroll = FindScrollViewer(ServerList);
         var offset = scroll?.VerticalOffset ?? 0;
         RenderServers();
         ServerList.UpdateLayout();
         scroll?.ScrollToVerticalOffset(offset);
+    }
+
+    // ── Favourites and recently used ───────────────────────────────────────
+    /// <summary>A server (or, in Advanced mode, a multihop route) the panel still lists; null once it was removed.</summary>
+    private ColituVpnServer? FindServer(string id) =>
+        _servers.FirstOrDefault(server => string.Equals(server.Id, id, StringComparison.OrdinalIgnoreCase))
+        ?? (_vpn.AdvancedMode ? _vpn.MultihopRoutes.FirstOrDefault(route => string.Equals(route.Id, id, StringComparison.OrdinalIgnoreCase)) : null);
+
+    private List<ColituVpnServer> ResolveServers(IEnumerable<string> ids) => ColituServerPicks.Resolve(ids, FindServer);
+
+    /// <summary>Home and the tray: favourites, then recently used, that are still listed and online; at most three.</summary>
+    private List<ColituVpnServer> ShortcutServers() =>
+        ColituServerPicks.Shortcuts(_vpn.FavoriteServerIds, _vpn.RecentServerIds, id => FindServer(id) is { Available: true })
+            .Select(FindServer)
+            .OfType<ColituVpnServer>()
+            .ToList();
+
+    /// <summary>The star on a row: adds the server to the favourites or takes it out.</summary>
+    private void FavoriteToggle_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not FrameworkElement { DataContext: ColituServerRow { Server.Id: { Length: > 0 } id } })
+        {
+            return;
+        }
+        try
+        {
+            _vpn.ToggleFavoriteServer(id);
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("ColituMainWindow.FavoriteToggle_Click", ex);
+        }
+        RenderServersKeepingScroll();
+        ApplyServerShortcuts();
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject root)
@@ -324,7 +386,15 @@ public partial class ColituMainWindow
             return;
         }
 
-        var server = row.IsAuto ? null : row.Server;
+        await PickServerAsync(row.IsAuto ? null : row.Server, row.Title);
+    }
+
+    /// <summary>
+    /// Picks a server (null: the automatic choice) as a click on its row in Locations does; also used
+    /// by the Home shortcuts and the tray. A live tunnel moves over to it.
+    /// </summary>
+    private async Task PickServerAsync(ColituVpnServer? server, string title)
+    {
         var wasActive = _vpn.Status is ColituVpnStatus.Connected or ColituVpnStatus.Reconnecting;
         if (server == null) _vpn.SelectAuto(); else _vpn.SelectServer(server);
         ApplyLocationCard();
@@ -336,14 +406,14 @@ public partial class ColituMainWindow
         }
 
         Navigate("home");
-        ShowToast(Loc.I.Format("locations.switching", ("server", row.Title)));
+        ShowToast(Loc.I.Format("locations.switching", ("server", title)));
         try
         {
             await _vpn.SwitchServerAsync(server);
             // Not after a switch that another choice cancelled.
             if (_vpn.Status == ColituVpnStatus.Connected)
             {
-                ShowToast(Loc.I.Format("locations.switched", ("server", ServerLabel(_vpn.ConnectedServer) ?? row.Title)));
+                ShowToast(Loc.I.Format("locations.switched", ("server", ServerLabel(_vpn.ConnectedServer) ?? title)));
             }
         }
         catch (ColituPlanRequiredException)
@@ -439,6 +509,68 @@ public sealed class ColituServerRow
     public Visibility StateVisibility => StateText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public Brush? StateBackground { get; private set; }
     public Brush? StateForeground { get; private set; }
+
+    // ── Favourite star ──
+    private static readonly Brush StarOn = Frozen(Color.FromRgb(0xC4, 0xB5, 0xFD));
+    private static readonly Brush StarOff = Frozen(Color.FromRgb(0x9A, 0x9A, 0xAB));
+
+    /// <summary>The server is starred (Favourites section, Home and tray shortcuts).</summary>
+    public bool IsFavorite { get; set; }
+    public bool CanFavorite => !IsAuto && !IsHeader && !IsGroup && Server?.Id is { Length: > 0 };
+    public Visibility StarVisibility => CanFavorite ? Visibility.Visible : Visibility.Collapsed;
+    public Brush StarFill => IsFavorite ? StarOn : Brushes.Transparent;
+    public Brush StarStroke => IsFavorite ? StarOn : StarOff;
+    public string FavoriteActionText => Loc.I[IsFavorite ? "locations.favoriteRemove" : "locations.favoriteAdd"];
+
+    /// <summary>
+    /// What a screen reader says for the row: "Berlin, Germany, 47 ms, connected" (title, details,
+    /// ping, state), not the class name.
+    /// </summary>
+    public string AccessibleName
+    {
+        get
+        {
+            var parts = new List<string> { Title };
+            if (!IsHeader)
+            {
+                parts.AddRange(Subtitle.Split(" · ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                if (IsMultihop && PingNote.Length > 0 && Ping is > 0)
+                {
+                    parts.Add($"{PingText} ({PingNote})");
+                }
+                else if (!IsAuto && Ping is > 0)
+                {
+                    parts.Add(PingText);
+                }
+                if (LoadText is { Length: > 0 } load)
+                {
+                    parts.Add(load);
+                }
+                if (StateText.Length > 0)
+                {
+                    parts.Add(StateText.ToLower(Loc.I.Culture));
+                }
+                if (IsFavorite)
+                {
+                    parts.Add(Loc.I["locations.favorite"]);
+                }
+                if (IsGroup)
+                {
+                    parts.Add(Loc.I[Expanded ? "a11y.expanded" : "a11y.collapsed"]);
+                }
+            }
+            return string.Join(", ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+        }
+    }
+
+    public override string ToString() => AccessibleName;
+
+    private static Brush Frozen(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
 
     public void MarkState(bool connected, bool selected)
     {

@@ -472,7 +472,7 @@ public partial class ColituMainWindow
             text.Children.Add(new TextBlock { Text = title(value), FontSize = 13.5, FontWeight = FontWeights.Medium, TextTrimming = TextTrimming.CharacterEllipsis });
             if (detail(value) is { } extra)
             {
-                text.Children.Add(new TextBlock { Text = extra, FontSize = 11.5, Foreground = (Brush)FindResource("MutedBrush"), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = extra });
+                text.Children.Add(new TextBlock { Text = extra, FontSize = 12, Foreground = (Brush)FindResource("MutedBrush"), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = extra });
             }
             var remove = new Button
             {

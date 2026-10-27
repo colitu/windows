@@ -492,4 +492,6 @@ public sealed class ColituDeviceRow
     public bool IsPaused { get; init; }
     public Visibility CurrentVisibility => IsCurrent ? Visibility.Visible : Visibility.Collapsed;
     public Visibility PausedVisibility => IsPaused ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>Name of the remove button for screen readers: "Remove device: Office PC".</summary>
+    public string RemoveLabel => $"{Loc.I["account.remove"]}: {Name}";
 }

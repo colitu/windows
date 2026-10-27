@@ -41,7 +41,11 @@
     <SolidColorBrush x:Key="Surface2Brush" Color="{StaticResource Surface2Color}" />
     <SolidColorBrush x:Key="TextBrush" Color="#F4F3FA" />
     <SolidColorBrush x:Key="MutedBrush" Color="#9A9AAB" />
-    <SolidColorBrush x:Key="DimBrush" Color="#63636F" />
+    <!-- Faint text (hints, notes, placeholders): 5.2:1 on the field colour #15151C (WCAG AA). -->
+    <SolidColorBrush x:Key="DimBrush" Color="#8A8A9A" />
+    <!-- Text of a disabled primary button: 6.7:1 on its grey body. -->
+    <SolidColorBrush x:Key="DisabledTextBrush" Color="#B4B4C2" />
+    <SolidColorBrush x:Key="DisabledBodyBrush" Color="#2A2A36" />
     <SolidColorBrush x:Key="LineBrush" Color="#14FFFFFF" />
     <SolidColorBrush x:Key="LineStrongBrush" Color="#26FFFFFF" />
     <SolidColorBrush x:Key="LilacBrush" Color="{StaticResource LilacColor}" />
@@ -151,7 +155,7 @@
     <!-- ── Text ─────────────────────────────────────────────────────────── -->
     <Style x:Key="Kicker" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource ColituFont}" />
-        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{StaticResource KickerBrush}" />
     </Style>
@@ -219,7 +223,7 @@
     </Style>
     <Style x:Key="BadgeText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource ColituFont}" />
-        <Setter Property="FontSize" Value="10.5" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="Bold" />
         <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}" />
     </Style>
@@ -234,7 +238,7 @@
     </Style>
     <Style x:Key="ChipText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource ColituFont}" />
-        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="Bold" />
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
     </Style>
@@ -332,8 +336,10 @@
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
                         </Trigger>
+                        <!-- Disabled: a solid grey pill with readable text (not a faded one: 4.5:1 at least). -->
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.42" />
+                            <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}" />
+                            <Setter TargetName="Body" Property="Background" Value="{StaticResource DisabledBodyBrush}" />
                             <Setter TargetName="Glow" Property="Visibility" Value="Collapsed" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -361,7 +367,7 @@
                             <Setter TargetName="Body" Property="Background" Value="#2A2A36" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.42" />
+                            <Setter Property="Opacity" Value="0.62" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -954,9 +960,24 @@
             <Setter.Value>
                 <ControlTemplate TargetType="MenuItem">
                     <Border x:Name="Body" MinWidth="190" Padding="12,9" Background="Transparent" CornerRadius="9">
-                        <ContentPresenter ContentSource="Header" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <!-- Checkable items (tray server choice, connection method) keep room for the tick. -->
+                            <Path x:Name="Tick" Width="12" Height="10" Margin="0,0,10,0" VerticalAlignment="Center" Data="M5 12.5l4.5 4.5L19 7.5" Stretch="Uniform" Stroke="{StaticResource LilacBrush}" StrokeEndLineCap="Round" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeThickness="2" Visibility="Collapsed" />
+                            <ContentPresenter Grid.Column="1" ContentSource="Header" />
+                        </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsCheckable" Value="True">
+                            <Setter TargetName="Tick" Property="Visibility" Value="Hidden" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                        </Trigger>
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="Body" Property="Background" Value="#339F8CFF" />
                         </Trigger>

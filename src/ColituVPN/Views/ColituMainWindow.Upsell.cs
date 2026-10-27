@@ -52,7 +52,9 @@ public partial class ColituMainWindow
     {
         var state = _upsell;
         var loc = Loc.I;
-        if (state.Kind == ColituUpsellKind.None || state.LimitBytes <= 0)
+        // The plain free-plan line repeated the plan card (allowance, devices) above it, which now has
+        // its own "Get Premium" button: only the stronger states (running low, used up, Premium ended) show.
+        if (state.Kind is ColituUpsellKind.None or ColituUpsellKind.Free || state.LimitBytes <= 0)
         {
             UpsellBanner.Visibility = Visibility.Collapsed;
             return;
@@ -104,8 +106,8 @@ public partial class ColituMainWindow
         Navigate("plan");
     }
 
-    /// <summary>The in-app plans and payment (Platega, Kyren Pay).</summary>
-    private void UpsellPremium_Click(object sender, RoutedEventArgs e) => Navigate("plan");
+    /// <summary>The in-app plans and payment (Platega, Kyren Pay, Rialit), the fitting plan preselected.</summary>
+    private void UpsellPremium_Click(object sender, RoutedEventArgs e) => OpenPlans(suggest: true);
 
     /// <summary>"Not now" on the Premium-ended card: back to the compact line for good.</summary>
     private void UpsellLater_Click(object sender, RoutedEventArgs e)

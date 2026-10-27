@@ -32,7 +32,31 @@ public partial class ColituMainWindow
     private string _paymentState = "";
     private bool _paying;
 
+    /// <summary>Set by "Get Premium": the next catalog load preselects the plan that fits (yearly).</summary>
+    private bool _suggestTier;
+
     private void ManagePlan_Click(object sender, RoutedEventArgs e) => OpenUrl(AccountPortalUrl);
+
+    /// <summary>
+    /// Opens Plans. With <paramref name="suggest"/> (free plan, "Get Premium") the smallest plan with
+    /// room for the devices in use is preselected, yearly, so the next click is the payment.
+    /// </summary>
+    private void OpenPlans(bool suggest)
+    {
+        if (suggest && _paymentState != "pending")
+        {
+            if (_catalog != null && ColituBillingService.SuggestTier(_catalog, _auth.CurrentSubscription?.DevicesUsed ?? 1) is { } suggested)
+            {
+                _tier = suggested;
+                _months = 12;
+            }
+            else
+            {
+                _suggestTier = true;
+            }
+        }
+        Navigate("plan");
+    }
 
     private async void PlanRefresh_Click(object sender, RoutedEventArgs e)
     {
@@ -84,7 +108,10 @@ public partial class ColituMainWindow
             var catalogTask = _billing.GetCatalogAsync();
             var methodsTask = _billing.GetPaymentMethodsAsync();
             _catalog = await catalogTask;
-            _methods = await methodsTask;
+            var catalog = _catalog;
+            // A method whose currency the catalog has no prices in (Rialit without the toman list) is
+            // left out rather than shown with a price it would not charge.
+            _methods = (await methodsTask).Where(method => ColituBillingService.IsSellable(method, catalog)).ToList();
             if (_catalog.Tiers.Count == 0 || _methods.Count == 0)
             {
                 throw new InvalidOperationException("Empty catalog");
@@ -94,6 +121,12 @@ public partial class ColituMainWindow
             {
                 _method = DefaultMethod(_methods);
             }
+            if (_suggestTier && ColituBillingService.SuggestTier(_catalog, _auth.CurrentSubscription?.DevicesUsed ?? 1) is { } suggested)
+            {
+                _tier = suggested;
+                _months = 12;
+            }
+            _suggestTier = false;
             if (_catalog.Tiers.All(tier => tier.Plan != _tier))
             {
                 var current = _auth.CurrentSubscription?.PlanName;
@@ -145,7 +178,7 @@ public partial class ColituMainWindow
 
     private static string MethodIcon(string key) => key switch
     {
-        "card" => "M3 6h18v12H3z M3 10h18 M7 15h4",
+        "card" or ColituBillingService.ProviderRialit => "M3 6h18v12H3z M3 10h18 M7 15h4",
         "crypto" => "M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5 M12 12v9 M12 12L4 7.5",
         "kyren" => "M4 4h16v16H4z M4 9h16 M9 4v16",
         _ => "M13 2L4.5 13.5H12L11 22l8.5-11.5H12z"
@@ -215,9 +248,10 @@ public partial class ColituMainWindow
             // Only the currency: whether a fee is added (or Colitu absorbs it) comes with the quote.
             var currency = ColituBillingService.ChargeCurrency(method, _catalog);
             var currencyKey = "currency." + currency.ToLowerInvariant();
+            var currencyText = Loc.Has(currencyKey) ? Loc.I[currencyKey] : currency;
             text.Children.Add(new TextBlock
             {
-                Text = Loc.Has(currencyKey) ? Loc.I[currencyKey] : currency,
+                Text = currencyText,
                 FontSize = 12,
                 Foreground = (Brush)FindResource("MutedBrush"),
                 TextTrimming = TextTrimming.CharacterEllipsis
@@ -225,6 +259,8 @@ public partial class ColituMainWindow
             Grid.SetColumn(text, 1);
             grid.Children.Add(text);
             option.Content = grid;
+            // Screen readers: "Bank card, In roubles (₽)" instead of an unnamed radio button.
+            System.Windows.Automation.AutomationProperties.SetName(option, $"{MethodName(method)}, {currencyText}");
             option.Checked += Method_Checked;
             MethodList.Children.Add(option);
         }
@@ -283,7 +319,7 @@ public partial class ColituMainWindow
                 body.Children.Add(new TextBlock
                 {
                     Text = Loc.I.Format("pricing.billedYearly", ("amount", Money(price.TotalMinor, price.Currency))),
-                    FontSize = 11.5,
+                    FontSize = 12,
                     Margin = new Thickness(0, 4, 0, 0),
                     TextWrapping = TextWrapping.Wrap,
                     Foreground = (Brush)FindResource("MutedBrush")
@@ -293,7 +329,7 @@ public partial class ColituMainWindow
                     body.Children.Add(new TextBlock
                     {
                         Text = Loc.I.Format("pricing.off", ("n", price.SavingPercent)),
-                        FontSize = 11.5,
+                        FontSize = 12,
                         FontWeight = FontWeights.SemiBold,
                         Margin = new Thickness(0, 3, 0, 0),
                         Foreground = (Brush)FindResource("SuccessBrush")
@@ -301,6 +337,17 @@ public partial class ColituMainWindow
                 }
             }
             option.Content = body;
+            // Screen readers: "Plus, 10 devices, 549 ₽ / month" (and the yearly total).
+            var spoken = new List<string> { TierName(tier.Plan), Loc.I.Count("device", tier.Devices) };
+            if (price != null)
+            {
+                spoken.Add($"{Money(price.MonthlyMinor, price.Currency)} {Loc.I["pricing.perMonth"]}");
+                if (_months > 1)
+                {
+                    spoken.Add(Loc.I.Format("pricing.billedYearly", ("amount", Money(price.TotalMinor, price.Currency))));
+                }
+            }
+            System.Windows.Automation.AutomationProperties.SetName(option, string.Join(", ", spoken));
             option.Checked += Tier_Checked;
             TierList.Children.Add(option);
         }
@@ -316,10 +363,13 @@ public partial class ColituMainWindow
         var price = ColituBillingService.PriceIn(tier, _months, currency);
         SummaryTitle.Text = $"Colitu {TierName(tier.Plan)}";
         SummarySub.Text = $"{Loc.I.Count("device", tier.Devices)} · {Loc.I[_months == 1 ? "pricing.monthly" : "pricing.yearly"]}";
-        var quote = _quote is { } q && q.Plan == _tier && q.DurationMonths == _months && q.Commission?.Method == _method ? q : null;
-        var quoteCurrency = quote?.Currency ?? currency;
+        // The quote answers the request it was made for (_quoteFor); the panel's echo of plan / method is not relied on.
+        var quote = _quote != null && _quoteFor == QuoteKey ? _quote : null;
+        var failed = quote == null && _quoteError != null;
+        var calculating = Loc.I["pricing.calculating"];
+        var quoteCurrency = quote?.Currency is { Length: > 0 } quoted ? quoted : currency;
         var package = quote?.PackagePriceMinor ?? price?.TotalMinor;
-        SummaryPackage.Text = package is { } amount ? Money(amount, quoteCurrency) : "…";
+        SummaryPackage.Text = package is { } amount ? Money(amount, quoteCurrency) : failed ? "—" : calculating;
         // A fee row only when the customer pays one (not when Colitu absorbs it).
         var fee = quote?.Commission?.AmountMinor ?? 0;
         var rate = quote?.Commission?.RateBps ?? 0;
@@ -327,39 +377,99 @@ public partial class ColituMainWindow
         SummaryFeeLabel.Text = rate > 0
             ? $"{Loc.I["pricing.commission"]} ({(rate / 100m).ToString("0.##", Loc.I.Culture)}%)"
             : Loc.I["pricing.commission"];
-        SummaryFee.Text = quote != null ? Money(fee, quoteCurrency) : "…";
-        SummaryTotal.Text = quote != null ? Money(quote.CustomerTotalMinor, quoteCurrency) : "…";
+        SummaryFee.Text = quote != null ? Money(fee, quoteCurrency) : "—";
+        if (quote != null || failed)
+        {
+            SummaryTotal.Text = quote != null ? Money(quote.CustomerTotalMinor, quoteCurrency) : "—";
+            SummaryTotal.FontSize = 28;
+            SummaryTotal.Foreground = (Brush)FindResource("TextBrush");
+        }
+        else
+        {
+            // Still asking the panel: say so instead of a bare "…".
+            SummaryTotal.Text = calculating;
+            SummaryTotal.FontSize = 15;
+            SummaryTotal.Foreground = (Brush)FindResource("MutedBrush");
+        }
+        QuoteErrorBox.Visibility = failed ? Visibility.Visible : Visibility.Collapsed;
+        QuoteErrorText.Text = _quoteError ?? "";
         PayButton.IsEnabled = quote != null && !_paying;
     }
 
+    /// <summary>The selection a quote is for.</summary>
+    private (string Tier, int Months, string Method) QuoteKey => (_tier, _months, _method);
+
+    private (string Tier, int Months, string Method)? _quoteFor;
+    private string? _quoteError;
+
+    /// <summary>One quote request may take this long; a slow panel (common from Russia) used to leave "…" for 20 s.</summary>
+    private static readonly TimeSpan QuoteAttemptTimeout = TimeSpan.FromSeconds(12);
+    private const int QuoteAttempts = 3;
+
+    /// <summary>
+    /// Asks the panel for the price of the selection. Before 3.0.6 a failed or empty answer left the
+    /// total at "…" and the pay button greyed out with no word and no retry. Now a timeout, a network
+    /// error or an empty answer is retried twice, then the reason is shown with a retry link; a refusal
+    /// (method switched off, 4xx) is said at once.
+    /// </summary>
     private async Task UpdateQuoteAsync()
     {
         if (ChosenTier == null || _method.Length == 0)
         {
+            RenderSummary();
             return;
         }
         var version = ++_quoteVersion;
+        var key = QuoteKey;
+        _quoteError = null;
         RenderSummary();
-        try
+        for (var attempt = 1; ; attempt++)
         {
-            var quote = await _billing.QuoteAsync(_tier, _months, _method);
-            if (version == _quoteVersion)
+            try
             {
+                var quote = await _billing.QuoteAsync(key.Tier, key.Months, key.Method).WaitAsync(QuoteAttemptTimeout);
+                if (version != _quoteVersion)
+                {
+                    return;
+                }
+                if (quote == null || quote.CustomerTotalMinor <= 0)
+                {
+                    throw new InvalidDataException("The quote came back empty.");
+                }
                 _quote = quote;
+                _quoteFor = key;
                 RenderSummary();
+                return;
             }
-        }
-        catch (Exception ex)
-        {
-            Logging.SaveLog("ColituMainWindow.UpdateQuoteAsync", ex);
-            if (version == _quoteVersion)
+            catch (Exception ex)
             {
+                if (version != _quoteVersion)
+                {
+                    return;
+                }
+                var transient = ex is TimeoutException or InvalidDataException or TaskCanceledException
+                    || ColituVpnService.IsNetworkFailure(ex)
+                    || ex is ColituApiException { StatusCode: >= System.Net.HttpStatusCode.InternalServerError or System.Net.HttpStatusCode.TooManyRequests or System.Net.HttpStatusCode.RequestTimeout };
+                Logging.SaveLog($"ColituMainWindow.UpdateQuoteAsync (attempt {attempt}, {(transient ? "retry" : "refused")})", ex);
+                if (transient && attempt < QuoteAttempts)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2 * attempt));
+                    if (version != _quoteVersion)
+                    {
+                        return;
+                    }
+                    continue;
+                }
                 _quote = null;
+                _quoteFor = null;
+                _quoteError = Loc.I[transient ? "pricing.quoteFailed" : "pricing.quoteUnavailable"];
                 RenderSummary();
-                SummaryTotal.Text = "—";
+                return;
             }
         }
     }
+
+    private async void QuoteRetry_Click(object sender, RoutedEventArgs e) => await UpdateQuoteAsync();
 
     private async void Period_Checked(object sender, RoutedEventArgs e)
     {
@@ -398,7 +508,7 @@ public partial class ColituMainWindow
     // ── Checkout ───────────────────────────────────────────────────────────
     private async void Pay_Click(object sender, RoutedEventArgs e)
     {
-        if (_paying || _quote == null)
+        if (_paying || _quote == null || _quoteFor != QuoteKey)
         {
             return;
         }
@@ -431,7 +541,7 @@ public partial class ColituMainWindow
         {
             _paying = false;
             PaySpinner.Visibility = Visibility.Collapsed;
-            PayButton.IsEnabled = _quote != null;
+            PayButton.IsEnabled = _quote != null && _quoteFor == QuoteKey;
         }
     }
 
