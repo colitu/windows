@@ -787,7 +787,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             {
                 var wasSwap = swap != null;
                 var viaRecovery = recovery != null && !wasSwap;
-                var recoveryEnvelope = viaRecovery ? recovery!.NextServer(failed) : null;
+                // A server penalized on this network (both paths just died there) goes last, not first again.
+                var recoveryEnvelope = viaRecovery ? recovery!.NextServer(failed, PenalizedRecoveryServers(recovery!)) : null;
                 if (viaRecovery && recoveryEnvelope == null)
                 {
                     LogConnection($"Recovery set: all {recovery!.Configs.Count} server(s) tried, giving up");
@@ -1640,6 +1641,13 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         return RestrictToVlessIfNeeded(config, null);
     }
 
+    /// <summary>The set's servers penalized on this network now.</summary>
+    private List<string> PenalizedRecoveryServers(ColituRecoverySet recovery)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return recovery.Configs.Select(item => item.Server?.Id ?? "").Where(id => _adaptive.IsPenalized(_networkKey, id, now)).ToList();
+    }
+
     /// <summary>The warm spare behind a recovery server: the next server of the set that did not fail and is not penalized here.</summary>
     private ColituSpareFetch? StartRecoverySpare(ColituRecoverySet recovery, ColituConfigEnvelopeDto current, IReadOnlyCollection<string> failed, CancellationToken token)
     {
@@ -2302,7 +2310,11 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             await OnTunnelLostAsync(fresh: true);
             return;
         }
-        await RecoverTunnelAsync($"both paths carry no traffic: {detail}", deferAs: ColituWatchAction.Reconnect);
+        // A spare on another server dying at the same time points at this computer's network
+        // (or a frozen app), not at the primary's server: it is kept.
+        var spareOnOtherServer = _sparePlan is { NextServerId.Length: > 0 } plan
+            && !string.Equals(plan.NextServerId, ConnectedServer?.Id, StringComparison.OrdinalIgnoreCase);
+        await RecoverTunnelAsync($"both paths carry no traffic: {detail}", deferAs: ColituWatchAction.Reconnect, spareOnOtherServer: spareOnOtherServer);
     }
 
     private async Task AllowSpareServerAsync(ColituSpareServer spare)
@@ -2692,7 +2704,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     /// two), and only when that does not help, reconnect from scratch (next transport).
     /// </summary>
     /// <param name="deferAs">The watcher verdict this recovery answers; when nothing could be done now, it is kept for the next miss.</param>
-    private async Task RecoverTunnelAsync(string reason, bool coreStopped = false, ColituWatchAction? deferAs = null)
+    /// <param name="spareOnOtherServer">The warm spare that died with the primary ran on another server.</param>
+    private async Task RecoverTunnelAsync(string reason, bool coreStopped = false, ColituWatchAction? deferAs = null, bool spareOnOtherServer = false)
     {
         if (!ColituNetwork.HasPhysicalNetwork())
         {
@@ -2782,7 +2795,11 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 // not this transport. Marking it put the worst transport first once the outage ended.
                 var shortMark = MarkTransportAfterRestart(internetDirect: true, bothPathsDead)
                     && _adaptive.MarkMidSessionStall(_networkKey, ConnectedServer?.Id, _activeTransport, DateTimeOffset.UtcNow, provisional: true);
-                if (ShouldLeaveServerAfterRestart(IsAutoSelection, internetDirect: true, bothPathsDead) && ConnectedServer?.Id is { } deadServer)
+                if (bothPathsDead && spareOnOtherServer)
+                {
+                    LogConnection($"Both paths died, the spare on another server too: the network, not server {ConnectedServer?.Id}; server kept");
+                }
+                if (ShouldLeaveServerAfterRestart(IsAutoSelection, internetDirect: true, bothPathsDead, spareOnOtherServer) && ConnectedServer?.Id is { } deadServer)
                 {
                     // Primary and spare carried nothing and a restart did not help: the reconnect
                     // tried this server's transports first (about 9 s) before the next server.
@@ -2809,9 +2826,11 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     /// Automatic mode leaves a server whose primary and spare both died mid-session and a core
     /// restart did not bring back, while the internet works outside the tunnel. Only the primary
     /// dead (no spare): its server's other transports come first, as before. A picked server is
-    /// kept. Same rule on Android and Linux.
+    /// kept, and so is the server when the spare ran on another server: two servers dying at once is
+    /// this computer's network. Same rule on Android and Linux.
     /// </summary>
-    internal static bool ShouldLeaveServerAfterRestart(bool automatic, bool internetDirect, bool bothPathsDead) => automatic && internetDirect && bothPathsDead;
+    internal static bool ShouldLeaveServerAfterRestart(bool automatic, bool internetDirect, bool bothPathsDead, bool spareOnOtherServer = false) =>
+        automatic && internetDirect && bothPathsDead && !spareOnOtherServer;
 
     /// <summary>
     /// The transport gets a stall mark after a failed restart only when the internet works outside the
