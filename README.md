@@ -15,7 +15,7 @@ system proxy, TUN adapter, routing and DNS.
 | | |
 |---|---|
 | App | `Colitu VPN` (`ColituVPN.exe`), WPF on .NET 10 |
-| Version | `3.0.3` (`src/Directory.Build.props`) |
+| Version | `3.0.5` (`src/Directory.Build.props`) |
 | OS | Windows 10 / 11, x64 |
 | Languages | Russian, English, Turkish |
 | Website | <https://colitu.com> · [downloads](https://colitu.com/downloads/windows) |
@@ -31,11 +31,13 @@ system proxy, TUN adapter, routing and DNS.
   and Shadowsocks run on [Xray](https://github.com/XTLS/Xray-core). Candidates
   are tried in order until traffic actually flows, and the result is reported
   back so the service can rank protocols per network.
-- **Kill switch** built on the Windows Filtering Platform, the same technique
-  the WireGuard client uses. While it is on, only the VPN cores, the app,
-  loopback, the TUN adapter, the local network and DHCP can reach the network.
-  Filters live in a dynamic WFP session, so a crash can never leave the PC
-  permanently offline.
+- **Kill switch** built on the Windows Filtering Platform and run by its own
+  Windows service (`ColituKillSwitchService`). While it is on, only the VPN
+  cores, the app, loopback, the TUN adapter, the local network and DHCP can
+  reach the network. The filters are persistent, so the block stays in place
+  if the app or a VPN core crashes (it fails closed). A normal Windows restart
+  ends the block unless Colitu is set to reconnect at sign-in. New installs
+  start in TUN mode.
 - **One window for everything:** sign-in and registration, e-mail
   verification, locations, plans and checkout, account and devices, and a
   support inbox with ticket replies.
@@ -113,7 +115,7 @@ folder holds a file that is not listed, and it copies only the pinned files by n
 Then run:
 
 ```powershell
-pwsh .\scripts\build-installer.ps1 -Version 3.0.3
+pwsh .\scripts\build-installer.ps1 -Version 3.0.5
 ```
 
 The output in `artifacts/installer/` is `ColituVPN-Setup-<version>-x64.exe`, a
