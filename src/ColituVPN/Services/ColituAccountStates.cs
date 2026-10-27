@@ -254,7 +254,9 @@ public static class ColituTrial
         }
 
         var days = Math.Max(1, (long)Math.Ceiling(left.TotalDays));
-        var text = loc.Format("trial.ends", ("days", loc.Count("day", days)));
+        // A real trial says "trial"; gifted or invite Premium that turns into the free plan says "Premium".
+        var trialing = string.Equals(subscription.Status, "trialing", StringComparison.OrdinalIgnoreCase);
+        var text = loc.Format(trialing ? "trial.ends" : "premium.ends", ("days", loc.Count("day", days)));
 
         var plan = subscription.NextPlan == null || string.Equals(subscription.NextPlan, "free", StringComparison.OrdinalIgnoreCase)
             ? loc["trial.freePlan"]

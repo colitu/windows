@@ -744,7 +744,8 @@ public sealed class ColituAuthService
             ExpiresAt = entitlement?.ExpiresAt,
             TrafficLimitBytes = limitBytes,
             TrafficUsedBytes = entitlement?.Traffic?.UsedBytes ?? 0,
-            TrafficRemainingBytes = entitlement?.Traffic?.RemainingBytes
+            TrafficRemainingBytes = entitlement?.Traffic?.RemainingBytes,
+            TrafficPeriodEnd = entitlement?.Traffic?.PeriodEnd
         };
     }
 
@@ -1543,6 +1544,8 @@ public sealed class ColituSubscription
     public long? TrafficLimitBytes { get; set; }
     public long TrafficUsedBytes { get; set; }
     public long? TrafficRemainingBytes { get; set; }
+    /// <summary>End of the traffic period: the free plan's allowance comes back then.</summary>
+    public string? TrafficPeriodEnd { get; set; }
     /// <summary>When the trial (or the current plan period) ends.</summary>
     public string? EndsAt { get; set; }
     /// <summary>The plan the account moves to then ("free" after the trial).</summary>

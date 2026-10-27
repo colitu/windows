@@ -127,7 +127,16 @@ public static class ColituReferral
 
     /// <summary>The share sentence without the link ("... Premium kazanırsın:").</summary>
     public static string ShareMessage(ColituReferralInfo info, Loc loc) =>
-        loc.Format("invite.shareText", ("days", info.InviteeDays));
+        loc.Format("invite.shareText", ("days", loc.Count("day", info.InviteeDays)));
+
+    /// <summary>
+    /// The home card line from the panel's numbers: "You and your friend each get 1 day of Premium" when both
+    /// rewards are the same, otherwise both numbers.
+    /// </summary>
+    public static string CardText(ColituReferralInfo info, Loc loc) =>
+        info.RewardDays == info.InviteeDays || info.RewardDays <= 0
+            ? loc.Format("invite.card.body", ("days", loc.Count("day", info.InviteeDays)))
+            : loc.Format("invite.card.split", ("invitee", loc.Count("day", info.InviteeDays)), ("days", loc.Count("day", info.RewardDays)));
 
     /// <summary>The ready-made share message: localized sentence, a blank space, the link.</summary>
     public static string ShareText(ColituReferralInfo info, Loc loc) =>

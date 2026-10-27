@@ -676,6 +676,30 @@
                                 </Grid>
                             </Border>
 
+                            <!-- Free plan: the month's allowance and the way to Premium; stronger when running low, used up or just back from Premium (ColituUpsell). -->
+                            <Border x:Name="UpsellBanner" Margin="0,0,0,16" Padding="18,12,12,12" Background="#0DFFFFFF" BorderBrush="{StaticResource LineStrongBrush}" BorderThickness="1" CornerRadius="20" Visibility="Collapsed">
+                                <StackPanel>
+                                    <Grid x:Name="UpsellCompact">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="UpsellCompactText" VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                                        <Button Grid.Column="1" Margin="12,0,4,0" VerticalAlignment="Center" Click="UpsellPremium_Click" Content="{s:T upsell.cta}" Style="{StaticResource LinkButton}" />
+                                    </Grid>
+                                    <StackPanel x:Name="UpsellStrong" Margin="0,2,6,2" Visibility="Collapsed">
+                                        <TextBlock x:Name="UpsellTitle" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="UpsellBody" Margin="0,4,0,0" FontSize="13" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                                        <WrapPanel Margin="0,12,0,0">
+                                            <Button Height="40" Padding="18,0" Click="UpsellPremium_Click" Style="{StaticResource PrimaryButton}">
+                                                <TextBlock FontSize="14" Text="{s:T upsell.cta}" />
+                                            </Button>
+                                            <Button x:Name="UpsellLaterButton" Margin="16,0,0,0" VerticalAlignment="Center" Click="UpsellLater_Click" Content="{s:T upsell.later}" Style="{StaticResource LinkButton}" Visibility="Collapsed" />
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
                             <!-- Trial ends within 3 days (dismissible per day). -->
                             <Border x:Name="TrialBanner" Margin="0,0,0,16" Padding="18,16" Background="#149F8CFF" BorderBrush="#599F8CFF" BorderThickness="1" CornerRadius="20" Visibility="Collapsed">
                                 <StackPanel>

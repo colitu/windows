@@ -83,16 +83,16 @@ public partial class ColituMainWindow
             return;
         }
         var loc = Loc.I;
-        InviteLead.Text = loc.Format("invite.lead", ("days", info.RewardDays), ("invitee", info.InviteeDays));
+        InviteLead.Text = loc.Format("invite.lead", ("days", loc.Count("day", info.RewardDays)), ("invitee", loc.Count("day", info.InviteeDays)));
         InviteLinkBox.Text = info.Link;
         InviteCodeLine.Text = loc.Format("invite.codeLine", ("code", info.Code));
         InviteStatInvited.Text = info.Invited.ToString("N0", loc.Culture);
         InviteStatValid.Text = info.Rewarded.ToString("N0", loc.Culture);
         InviteStatPending.Text = loc.Format("invite.stat.pending", ("n", info.Pending));
-        InviteStatEarned.Text = loc.Format("invite.stat.days", ("n", info.DaysEarned));
+        InviteStatEarned.Text = loc.Count("day", info.DaysEarned);
         InviteStatLeft.Text = $"{info.RewardsLeft} / {info.MonthlyCap}";
-        InviteRule1.Text = loc.Format("invite.rule1", ("days", info.InviteeDays));
-        InviteRule2.Text = loc.Format("invite.rule2", ("days", info.RewardDays));
+        InviteRule1.Text = loc.Format("invite.rule1", ("days", loc.Count("day", info.InviteeDays)));
+        InviteRule2.Text = loc.Format("invite.rule2", ("days", loc.Count("day", info.RewardDays)));
         InviteRule3.Text = loc.Format("invite.rule3", ("n", info.MonthlyCap));
         InviteRule4.Text = loc["invite.rule4"];
         ShowInviteState(loading: false, error: false);
@@ -160,7 +160,7 @@ public partial class ColituMainWindow
             && ColituReferral.ShouldShowCard(_invite, prefs.InviteCardEligible, prefs.InviteCardDismissedAt, DateTimeOffset.UtcNow, paused);
         if (show && _invite is { } info)
         {
-            InviteCardBody.Text = Loc.I.Format("invite.card.body", ("days", info.InviteeDays));
+            InviteCardBody.Text = ColituReferral.CardText(info, Loc.I);
         }
         InviteCard.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }

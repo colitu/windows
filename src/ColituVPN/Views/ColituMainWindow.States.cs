@@ -238,7 +238,7 @@ public partial class ColituMainWindow
         {
             Logging.SaveLog("ColituMainWindow.ShowPausedAsync", ex);
         }
-        PausedBody.Text = info.Describe(Loc.I);
+        PausedBody.Text = $"{info.Describe(Loc.I)} {Loc.I["paused.premiumHint"]}";
         PausedErrorBox.Visibility = Visibility.Collapsed;
         var canActivate = !string.IsNullOrWhiteSpace(_auth.RegisteredDeviceId);
         PausedUseThisButton.Visibility = PausedUseThisHint.Visibility = canActivate ? Visibility.Visible : Visibility.Collapsed;
@@ -288,7 +288,7 @@ public partial class ColituMainWindow
         }
         catch (ColituApiException ex) when (ex.ErrorCode is "DEVICE_OVER_LIMIT")
         {
-            PausedBody.Text = (ex.OverLimit ?? new ColituDeviceOverLimit()).Describe(Loc.I);
+            PausedBody.Text = $"{(ex.OverLimit ?? new ColituDeviceOverLimit()).Describe(Loc.I)} {Loc.I["paused.premiumHint"]}";
         }
         catch (Exception ex)
         {

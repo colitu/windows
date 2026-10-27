@@ -264,6 +264,17 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         SaveState();
     }
 
+    /// <summary>Remembers (or forgets, with null) the end of the last Premium seen; only the preference is saved.</summary>
+    public void SetPremiumSeenUntil(string? until)
+    {
+        if (Preferences.PremiumSeenUntil == until)
+        {
+            return;
+        }
+        _session = _session with { Preferences = _session.Preferences with { PremiumSeenUntil = until } };
+        SaveState();
+    }
+
     /// <summary>The user closed the home invite card: hide it for ColituReferral.CardDismissDays days.</summary>
     public void DismissInviteCard(DateTimeOffset at)
     {
@@ -1002,8 +1013,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             // the cores stay allowed through it: a retry works, and Disconnect (or turning the kill
             // switch off, or quitting) opens the internet again.
             var devicePaused = IsDevicePaused(ex);
-            var noPlan = ex is ColituApiException planApi && IsPlanError(planApi);
-            // A paused device or no plan never keeps the internet closed: there is nothing to reconnect to.
+            var noPlan = ex is ColituApiException planApi && IsPlanError(planApi) || ColituUpsell.IsQuotaError(ex);
+            // A paused device, no plan or a used-up free allowance never keeps the internet closed: there is nothing to reconnect to.
             if (await _hold.ConnectFailedAsync(Preferences.KillSwitchEnabled, devicePaused, noPlan))
             {
                 _hold.FailedOn(ColituNetwork.PhysicalNetworkFingerprint());
@@ -5766,7 +5777,10 @@ public sealed record ColituVpnPreferences(
     // ISO-8601 UTC time the home invite card was closed; it stays hidden for ColituReferral.CardDismissDays.
     string? InviteCardDismissedAt = null,
     // The connection method the user picked on the home screen ("" = automatic): it is tried first, the others stay as fallback.
-    string PreferredTransport = "")
+    string PreferredTransport = "",
+    // Expiry of the last Premium (bought, gifted or from an invite) seen on this install: back on the free
+    // plan, home says once that it ended (ColituUpsell). Cleared when the user closes that banner.
+    string? PremiumSeenUntil = null)
 {
     /// <summary>
     /// Preferences of a first run (no saved state yet): privacy mode on, Simple mode. The record
