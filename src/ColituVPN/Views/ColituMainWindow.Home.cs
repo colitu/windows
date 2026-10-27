@@ -492,7 +492,7 @@ public partial class ColituMainWindow
         ApplyTrialBanner();
     }
 
-    /// <summary>The free plan: 10 GB a month, renewed on the 1st.</summary>
+    /// <summary>The free plan: 1 GB a month, renewed on the 1st.</summary>
     private static bool IsFreePlan(ColituSubscription? subscription) =>
         string.Equals(subscription?.PlanName, "Free", StringComparison.OrdinalIgnoreCase);
 
