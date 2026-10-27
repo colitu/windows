@@ -395,6 +395,17 @@ public partial class ColituMainWindow
     /// </summary>
     private async Task PickServerAsync(ColituVpnServer? server, string title)
     {
+        // Picking the current choice again (a shortcut chip, the tray, "Fastest" while automatic)
+        // must not tear the tunnel down and rebuild it.
+        var unchanged = server == null
+            ? _vpn.IsAutoSelection
+            : !_vpn.IsAutoSelection && string.Equals(_vpn.SelectedServer?.Id, server.Id, StringComparison.OrdinalIgnoreCase);
+        if (unchanged)
+        {
+            Navigate("home");
+            return;
+        }
+
         var wasActive = _vpn.Status is ColituVpnStatus.Connected or ColituVpnStatus.Reconnecting;
         if (server == null) _vpn.SelectAuto(); else _vpn.SelectServer(server);
         ApplyLocationCard();
