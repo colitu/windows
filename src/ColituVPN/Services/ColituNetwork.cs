@@ -396,6 +396,56 @@ public static class ColituNetwork
         }
     }
 
+    /// <summary>
+    /// IPv4 interface index the ping probes pin to (IP_UNICAST_IF): <see cref="PhysicalInterfaceIndex"/>,
+    /// else the adapter carrying the lowest-metric IPv4 default route that is neither Colitu's TUN
+    /// nor another VPN's adapter. <see cref="PhysicalInterface"/> only takes Ethernet / Wi-Fi, so on
+    /// PPPoE, mobile broadband or a Hyper-V external switch it finds nothing and every ping was skipped
+    /// while connected.
+    /// </summary>
+    public static int? ProbeInterfaceIndex()
+    {
+        if (PhysicalInterfaceIndex() is > 0 and var physical)
+        {
+            return physical;
+        }
+        try
+        {
+            var metrics = DefaultRouteMetrics();
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .Where(adapter => adapter.OperationalStatus == OperationalStatus.Up)
+                .Where(adapter => adapter.NetworkInterfaceType is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel))
+                .Where(adapter => !IsColituTun(adapter) && !IsOtherVpnAdapter(adapter))
+                .Select(adapter =>
+                {
+                    try
+                    {
+                        return adapter.GetIPProperties().GetIPv4Properties()?.Index ?? 0;
+                    }
+                    catch
+                    {
+                        // No IPv4 on this adapter.
+                        return 0;
+                    }
+                })
+                .Where(index => index > 0 && metrics.ContainsKey(index))
+                .OrderBy(index => metrics[index])
+                .Select(index => (int?)index)
+                .FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool IsOtherVpnAdapter(NetworkInterface adapter)
+    {
+        var text = adapter.Description + " " + adapter.Name;
+        return new[] { "Wintun", "TAP-Windows", "TAP Adapter", "WireGuard", "OpenVPN", "Tunnel", "xray_tun", "singbox_tun" }
+            .Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static NetworkInterface? PhysicalInterface()
     {
         try

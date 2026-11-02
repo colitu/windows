@@ -43,21 +43,33 @@ public static class ColituLocationSort
         var key = KeyFor(Normalize(mode), ping);
         if (key == null)
         {
-            return groups;
+            return groups.Select(RecommendedFirst).ToList();
         }
         return groups
-            .Select(group => group.IsSingle ? group : new ColituServerGroup
+            .Select(group => group.IsSingle ? group : RecommendedFirst(new ColituServerGroup
             {
                 Key = group.Key,
                 Name = group.Name,
                 CountryCode = group.CountryCode,
                 Servers = OrderByKey(group.Servers, key)
-            })
+            }))
             // OrderBy is stable: groups with the same key stay in name order.
             .OrderBy(group => Best(group.Servers, key) is null ? 1 : 0)
             .ThenBy(group => Best(group.Servers, key) ?? 0)
             .ToList();
     }
+
+    /// <summary>Servers the panel recommends come first inside their country; the rest keep their order (stable).</summary>
+    internal static ColituServerGroup RecommendedFirst(ColituServerGroup group) =>
+        group.IsSingle || !group.Servers.Any(server => server.Recommended)
+            ? group
+            : new ColituServerGroup
+            {
+                Key = group.Key,
+                Name = group.Name,
+                CountryCode = group.CountryCode,
+                Servers = group.Servers.OrderBy(server => server.Recommended ? 0 : 1).ToList()
+            };
 
     /// <summary>Double-VPN routes: by name, or by their entry ping / load with unknown values last.</summary>
     public static List<ColituVpnServer> Routes(IEnumerable<ColituVpnServer> routes, string? mode, Func<ColituVpnServer, int?> ping, CultureInfo culture)

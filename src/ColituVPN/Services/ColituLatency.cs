@@ -41,7 +41,9 @@ public static class ColituLatency
     /// </summary>
     public static async Task<ColituPingRound> MeasureRoundAsync(IEnumerable<ColituVpnServer> servers, bool requirePin)
     {
-        var index = ColituNetwork.PhysicalInterfaceIndex();
+        // The probe adapter, not the core's bind adapter: PPPoE / mobile broadband count too, or every
+        // ping of such a PC would be skipped while connected ("— ms" for alive servers).
+        var index = ColituNetwork.ProbeInterfaceIndex();
         using var gate = new SemaphoreSlim(MaxConcurrency);
         var probes = ProbeTargets(servers)
             .Select(async server =>
@@ -49,8 +51,8 @@ public static class ColituLatency
                 await gate.WaitAsync();
                 try
                 {
-                    var (ms, unpinned) = await MeasureAsync(server.Host!, server.Port!.Value, index, requirePin);
-                    return (Id: server.Id!, Ms: ms, Unpinned: unpinned);
+                    var (ms, unpinned, error) = await MeasureDetailedAsync(server.Host!, server.Port!.Value, index, requirePin);
+                    return (Id: server.Id!, Ms: ms, Unpinned: unpinned, Error: error);
                 }
                 finally
                 {
@@ -62,7 +64,9 @@ public static class ColituLatency
             results.Where(result => result.Ms != null)
                 .ToDictionary(result => result.Id, result => result.Ms!.Value, StringComparer.OrdinalIgnoreCase),
             results.Where(result => result.Unpinned).Select(result => result.Id).ToHashSet(StringComparer.OrdinalIgnoreCase),
-            index);
+            index,
+            results.Where(result => result.Ms == null && !result.Unpinned && result.Error != null)
+                .ToDictionary(result => result.Id, result => result.Error!, StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>The servers one round pings: those with a probe address, one per id, at most <see cref="MaxProbes"/>.</summary>
@@ -126,9 +130,19 @@ public static class ColituLatency
     /// <summary>Best of two connects; <c>Unpinned</c> when <paramref name="requirePin"/> kept the probe from dialling.</summary>
     public static async Task<(int? Ms, bool Unpinned)> MeasureAsync(string host, int port, int? interfaceIndex, bool requirePin)
     {
+        var (ms, unpinned, _) = await MeasureDetailedAsync(host, port, interfaceIndex, requirePin);
+        return (ms, unpinned);
+    }
+
+    /// <summary>
+    /// <see cref="MeasureAsync(string, int, int?, bool)"/> with why it failed: dns, not_public,
+    /// timeout, or the socket error (connectionrefused, networkunreachable, accessdenied, ...).
+    /// </summary>
+    internal static async Task<(int? Ms, bool Unpinned, string? Error)> MeasureDetailedAsync(string host, int port, int? interfaceIndex, bool requirePin)
+    {
         if (requirePin && interfaceIndex is not > 0)
         {
-            return (null, true);
+            return (null, true, null);
         }
         IPAddress? address;
         try
@@ -140,27 +154,33 @@ public static class ColituLatency
         }
         catch
         {
-            return (null, false);
+            return (null, false, "dns");
         }
-        if (address == null || address.AddressFamily != AddressFamily.InterNetwork || !IsPublic(address))
+        if (address == null)
         {
-            return (null, false);
+            return (null, false, "dns");
+        }
+        if (address.AddressFamily != AddressFamily.InterNetwork || !IsPublic(address))
+        {
+            return (null, false, "not_public");
         }
 
         int? best = null;
+        string? error = null;
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var (ms, unpinned) = await ProbeAsync(address, port, interfaceIndex, requirePin, TimeoutMs);
+            var (ms, unpinned, failure) = await ProbeDetailedAsync(address, port, interfaceIndex, requirePin, TimeoutMs);
             if (unpinned)
             {
-                return (null, true);
+                return (null, true, null);
             }
             if (ms != null && (best == null || ms < best))
             {
                 best = ms;
             }
+            error ??= failure;
         }
-        return (best, false);
+        return (best, false, best == null ? error : null);
     }
 
     /// <summary>
@@ -190,6 +210,13 @@ public static class ColituLatency
     /// </summary>
     internal static async Task<(int? Ms, bool Unpinned)> ProbeAsync(IPAddress address, int port, int? interfaceIndex, bool requirePin, int timeoutMs)
     {
+        var (ms, unpinned, _) = await ProbeDetailedAsync(address, port, interfaceIndex, requirePin, timeoutMs);
+        return (ms, unpinned);
+    }
+
+    /// <summary><see cref="ProbeAsync"/> with the failure kind: timeout or the socket error in lower case.</summary>
+    internal static async Task<(int? Ms, bool Unpinned, string? Error)> ProbeDetailedAsync(IPAddress address, int port, int? interfaceIndex, bool requirePin, int timeoutMs)
+    {
         try
         {
             using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
@@ -210,20 +237,34 @@ public static class ColituLatency
             }
             if (requirePin && !pinned)
             {
-                return (null, true);
+                return (null, true, null);
             }
             using var timeout = new CancellationTokenSource(timeoutMs);
             var watch = Stopwatch.StartNew();
             await socket.ConnectAsync(new IPEndPoint(address, port), timeout.Token);
             watch.Stop();
-            return (Math.Max(1, (int)watch.ElapsedMilliseconds), false);
+            return (Math.Max(1, (int)watch.ElapsedMilliseconds), false, null);
         }
-        catch
+        catch (OperationCanceledException)
         {
-            return (null, false);
+            return (null, false, "timeout");
+        }
+        catch (SocketException ex)
+        {
+            return (null, false, ex.SocketErrorCode == SocketError.TimedOut ? "timeout" : ex.SocketErrorCode.ToString().ToLowerInvariant());
+        }
+        catch (Exception ex)
+        {
+            return (null, false, ex.GetType().Name.ToLowerInvariant());
         }
     }
 }
 
 /// <summary>One ping round: successful pings by server id, servers not dialled because the socket could not be pinned, the adapter used.</summary>
-public sealed record ColituPingRound(Dictionary<string, int> Ms, IReadOnlySet<string> Unpinned, int? InterfaceIndex);
+public sealed record ColituPingRound(Dictionary<string, int> Ms, IReadOnlySet<string> Unpinned, int? InterfaceIndex,
+    IReadOnlyDictionary<string, string>? Errors = null)
+{
+    /// <summary>Failed probes by kind, e.g. "timeout 3, connectionrefused 1"; empty when none.</summary>
+    public string ErrorSummary() => Errors is not { Count: > 0 } errors ? ""
+        : string.Join(", ", errors.Values.GroupBy(kind => kind).OrderByDescending(group => group.Count()).Select(group => $"{group.Key} {group.Count()}"));
+}
