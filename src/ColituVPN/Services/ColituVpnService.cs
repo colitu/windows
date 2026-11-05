@@ -148,6 +148,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     private string? _pendingDropReason;
     private string? _attemptNodeId;
     private string? _attemptProtocol;
+    /// <summary>What ordered the server of the current automatic connect: "ac4", "ac3" or "panel"; null for a manual connect.</summary>
+    private string? _attemptEngine;
     private bool _connectFallback;
     /// <summary>Health checks in a row that carried no traffic through the tunnel.</summary>
     private int _failedChecks;
@@ -1243,6 +1245,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         _connectFallback = false;
         _attemptNodeId = NodeIdOf(server);
         _attemptProtocol = null;
+        _attemptEngine = null;
 
         try
         {
@@ -1325,6 +1328,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             // unreachable, no usable cache); the last server failure is what the connect ends with.
             ColituRecoverySet? recovery = null;
             Exception? lastServerFailure = null;
+            // A spare that proved it carries traffic may still be followed once after the budget ran out.
+            var lateSwapUsed = false;
             for (var round = 1; ; round++)
             {
                 var wasSwap = swap != null;
@@ -1343,6 +1348,11 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                     : automatic
                     ? ranked.FirstOrDefault(item => !failed.Contains(item.Id!, StringComparer.OrdinalIgnoreCase))
                     : server;
+                if (automatic)
+                {
+                    // Per connect: the server of this round was ordered by the model or the app's rules, or chosen by the panel.
+                    _attemptEngine = ColituAcSpec.EngineOfRound(ranked.Count, panelChose: target == null && !viaRecovery && !wasSwap, _lastOrderEngine == ColituLm.EngineAc4);
+                }
                 if (round > 1)
                 {
                     // First try = the first round, whichever of its pair (primary or spare) carried traffic.
@@ -1355,7 +1365,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                     : viaRecovery ? FetchRecoveryConfigAsync(recoveryEnvelope!, token)
                     : FetchConfigAsync(target, token, quick, automatic, failed, preferenceSent: round > 1);
                 // Started after the primary's request reset the panel connections; never awaited.
-                var spareTask = viaRecovery ? StartRecoverySpare(recovery!, recoveryEnvelope!, failed, token) : StartSpareFetch(automatic, ranked, target, failed, token);
+                // No new spare in the last round: a second spare winning would end the connect as failed.
+                var spareTask = lateSwapUsed ? null : viaRecovery ? StartRecoverySpare(recovery!, recoveryEnvelope!, failed, token) : StartSpareFetch(automatic, ranked, target, failed, token);
                 ColituVpnConfigResponse config;
                 try
                 {
@@ -1445,9 +1456,11 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                     }
                     break;
                 }
-                catch (ColituSpareServerWins wins) when (connectWatch.Elapsed < ConnectBudget)
+                catch (ColituSpareServerWins wins) when (ShouldFollowSpare(connectWatch.Elapsed, lateSwapUsed))
                 {
                     // Roles swap: the spare's server and transport lead the next round (one quick reload).
+                    // Past the budget this happens once, and the connect ends on that proven server.
+                    lateSwapUsed |= connectWatch.Elapsed >= ConnectBudget;
                     swap = wins;
                     await StopCoreAsync();
                 }
@@ -2235,6 +2248,12 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     internal static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(45);
     /// <summary>No further server is started after this (it would end past <see cref="ConnectBudget"/>).</summary>
     private static readonly TimeSpan NextServerDeadline = ConnectBudget - PerServerBudget;
+
+    /// <summary>
+    /// A spare that carried traffic is followed within the budget; past it once per connect, so the connect ends on the
+    /// proven server instead of failing, and never loops.
+    /// </summary>
+    internal static bool ShouldFollowSpare(TimeSpan elapsed, bool lateSwapUsed) => elapsed < ConnectBudget || !lateSwapUsed;
 
     /// <summary>Time for the next server: at most 20 s, at least one transport, within the 45 s of the connect.</summary>
     internal static TimeSpan ServerBudget(TimeSpan elapsed)
@@ -3250,7 +3269,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     /// </summary>
     /// <param name="deferAs">The watcher verdict this recovery answers; when nothing could be done now, it is kept for the next miss.</param>
     /// <param name="spareOnOtherServer">The warm spare that died with the primary ran on another server.</param>
-    private async Task RecoverTunnelAsync(string reason, bool coreStopped = false, ColituWatchAction? deferAs = null, bool spareOnOtherServer = false)
+    /// <param name="dropReason">The reason the drop and recovery events carry instead of the one read from <paramref name="reason"/> (a recovery after the computer woke up).</param>
+    private async Task RecoverTunnelAsync(string reason, bool coreStopped = false, ColituWatchAction? deferAs = null, bool spareOnOtherServer = false, string? dropReason = null)
     {
         if (!ColituNetwork.HasPhysicalNetwork())
         {
@@ -3267,8 +3287,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         }
         _waitingForNetwork = false;
         LogConnection(reason);
-        StartRecovery(coreStopped ? null : reason, coreStopped ? "core_crash" : null);
-        _pendingDropReason = coreStopped ? "core_crash" : ColituAcSpec.ReasonOfText(reason);
+        StartRecovery(coreStopped ? null : reason, coreStopped ? "core_crash" : dropReason);
+        _pendingDropReason = coreStopped ? "core_crash" : dropReason ?? ColituAcSpec.ReasonOfText(reason);
         if (coreStopped)
         {
             NoteDrop("core_crash");
@@ -3306,7 +3326,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 // Not the transport's fault: no stall mark, and fresh settings from the panel
                 // (which can move to a healthy node) instead of the cached ones for this server.
                 LogConnection("The server does not answer outside the tunnel either; reconnecting");
-                _pendingDropReason = "timeout";
+                _pendingDropReason = dropReason ?? "timeout";
                 await OnTunnelLostAsync(fresh: true);
                 return;
             }
@@ -3734,7 +3754,23 @@ public sealed class ColituVpnService : IColituKillSwitchControl
 
     private async Task VerifyAfterResumeAsync()
     {
-        await Task.Delay(TimeSpan.FromSeconds(4));
+        // Not a fixed delay: a slow Wi-Fi that joins late would make the tunnel look dead and be rebuilt for nothing.
+        var sinceWake = Stopwatch.StartNew();
+        TimeSpan? upSince = null;
+        while (true)
+        {
+            var networkUp = ColituNetwork.HasPhysicalNetwork() && ColituNetwork.HasDefaultRoute();
+            upSince = networkUp ? upSince ?? sinceWake.Elapsed : null;
+            if (ColituResumeWait.ShouldCheck(sinceWake.Elapsed, upSince is { } since ? sinceWake.Elapsed - since : null) || _userDisconnected)
+            {
+                if (!networkUp)
+                {
+                    LogConnection($"Resume: the network is still not up after {sinceWake.Elapsed.TotalSeconds:0} s; checking the tunnel anyway");
+                }
+                break;
+            }
+            await Task.Delay(ColituResumeWait.PollInterval);
+        }
         // One check at a time with the watchdog, or both could start a reconnect.
         if (Interlocked.Exchange(ref _watchdogBusy, 1) == 1)
         {
@@ -3751,7 +3787,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             if (!probe.Success && CanHeal())
             {
                 // Connections to the server died while the computer slept.
-                await RecoverTunnelAsync($"Tunnel check after resume failed: {probe.Detail}");
+                await RecoverTunnelAsync($"Tunnel check after resume failed: {probe.Detail}", dropReason: ColituAcSpec.ResumeReason);
             }
         }
         catch (Exception ex)
@@ -3870,7 +3906,8 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             Reason = reason,
             Ms = ColituAcSpec.ClampMs(ms),
             FirstTry = success && !_connectFallback,
-            Mode = automatic ? "auto" : "manual"
+            Mode = automatic ? "auto" : "manual",
+            Engine = automatic ? _attemptEngine : null
         });
     }
 
