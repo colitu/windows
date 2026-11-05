@@ -429,7 +429,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             _whitelistMode, _session.ClientCountry);
         var input = new ColituLmInput
         {
-            Model = _lmModel.Model,
+            Model = ColituLmPlanner.ModelFor(_lmModel.Model, _session.ClientCountry),
             ModelAgeH = _lmModel.AgeH(now),
             EngineEnabled = true,
             Country = _session.ClientCountry ?? "",
@@ -447,7 +447,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             {
                 _lmLead = null;
                 _lastOrderEngine = ColituLm.EngineAc3;
-                JournalDecision(input, decision, pairs, null, whitelist.Count > 0 ? "ac3_whitelist" : _lmModel.Model == null ? "ac3_no_model" : "ac3_model_version", tunnelLatency);
+                JournalDecision(input, decision, pairs, null, whitelist.Count > 0 ? "ac3_whitelist" : _lmModel.Model == null ? "ac3_no_model" : input.Model == null ? "ac3_model_country" : "ac3_model_version", tunnelLatency);
             }
             return whitelist.Count > 0 ? whitelist : null;
         }
@@ -563,14 +563,17 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     /// <summary>Fetches the AC4 model when it is due (none, older than 6 h, another country); never throws.</summary>
     private async Task RefreshAcModelIfDueAsync()
     {
-        if (!AcEngine4Enabled || !_lmModel.TakeFetchSlot(DateTimeOffset.UtcNow, _session.ClientCountry))
+        // With the VPN off the panel takes the country from the request; through the tunnel from the
+        // token, and without one it would only see the exit: the last model stays.
+        var vpnOff = Status == ColituVpnStatus.Disconnected;
+        var networkToken = vpnOff ? null : CurrentNetworkToken();
+        if (!AcEngine4Enabled || (!vpnOff && networkToken == null) || !_lmModel.TakeFetchSlot(DateTimeOffset.UtcNow, _session.ClientCountry))
         {
             return;
         }
         try
         {
-            // With the VPN off the panel takes the country from the request; through the tunnel from the token.
-            var model = await _api.GetAcModelAsync(Status == ColituVpnStatus.Disconnected ? null : CurrentNetworkToken());
+            var model = await _api.GetAcModelAsync(networkToken);
             if (model != null)
             {
                 _lmModel.Set(model, DateTimeOffset.UtcNow);
@@ -898,11 +901,12 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         return ColituAdaptiveConnect.NetworkKey(_linkKind, _session.ClientNetwork);
     }
 
-    /// <summary>Saves the panel's view of this device's network; values fetched through the VPN come back empty and never overwrite.</summary>
+    /// <summary>Saves the panel's view of this device's network; values fetched through the VPN never overwrite.</summary>
     private void RememberClientNetwork(ColituServersResponse servers)
     {
-        var country = servers.ClientCountry.NullIfEmpty() ?? _session.ClientCountry;
-        var network = ColituAdaptiveConnect.ResolveClientNetwork(servers.ClientNetwork, _session.ClientNetwork);
+        var place = ColituAdaptiveConnect.ListPlace(Status == ColituVpnStatus.Disconnected, servers.ClientCountry, servers.ClientNetwork);
+        var country = place.Country.NullIfEmpty() ?? _session.ClientCountry;
+        var network = ColituAdaptiveConnect.ResolveClientNetwork(place.Network, _session.ClientNetwork);
         var session = _session with { ClientCountry = country, ClientNetwork = network };
         if (servers.AdaptiveConnect3 is { } ac3)
         {
@@ -918,7 +922,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         {
             session = session with { WhitelistProbe = servers.WhitelistProbe };
         }
-        if (servers.ClientNetwork.IsNotEmpty())
+        if (place.Network.IsNotEmpty())
         {
             // Fetched with the VPN off: the token and the hints belong to this network (no hints = none blocked).
             session = session with
@@ -926,11 +930,11 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 NetworkHintsBlocked = servers.NetworkHintsBlocked,
                 NetworkHintsPreferred = servers.NetworkHintsPreferred,
                 NetworkHintsServers = servers.NetworkHintsServers,
-                NetworkHintsNetwork = servers.ClientNetwork
+                NetworkHintsNetwork = place.Network
             };
             if (servers.NetworkToken.IsNotEmpty())
             {
-                session = session with { NetworkToken = servers.NetworkToken, NetworkTokenNetwork = servers.ClientNetwork, NetworkTokenAt = DateTimeOffset.UtcNow };
+                session = session with { NetworkToken = servers.NetworkToken, NetworkTokenNetwork = place.Network, NetworkTokenAt = DateTimeOffset.UtcNow };
             }
         }
         if (session == _session)
