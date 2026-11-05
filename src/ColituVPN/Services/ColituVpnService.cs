@@ -560,12 +560,15 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         ColituEngineJournal.Instance.Add(ColituEngineJournal.Outcome, new { node_id = serverId, protocol, outcome = ok ? "ok" : "fail", reason });
     }
 
+    /// <summary>No core runs, so a request leaves from this device's own network (the status alone cannot tell: Error and early Connecting have no tunnel either).</summary>
+    private static bool TunnelOff => !CoreManager.Instance.IsCoreRunning;
+
     /// <summary>Fetches the AC4 model when it is due (none, older than 6 h, another country); never throws.</summary>
     private async Task RefreshAcModelIfDueAsync()
     {
         // With the VPN off the panel takes the country from the request; through the tunnel from the
         // token, and without one it would only see the exit: the last model stays.
-        var vpnOff = Status == ColituVpnStatus.Disconnected;
+        var vpnOff = TunnelOff;
         var networkToken = vpnOff ? null : CurrentNetworkToken();
         if (!AcEngine4Enabled || (!vpnOff && networkToken == null) || !_lmModel.TakeFetchSlot(DateTimeOffset.UtcNow, _session.ClientCountry))
         {
@@ -856,6 +859,27 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         _reachability.Visible(_lastServers, server => server.Id, [ConnectedServer?.Id]);
 
     /// <summary>
+    /// A connect that starts before the first server list (the PC was shut down while connected):
+    /// without a list the panel chooses, knowing nothing of what is blocked on this network, and keeps
+    /// that server for 24 h. The list is waited for at most 4 s; after that the panel chooses as before.
+    /// </summary>
+    private async Task EnsureServerListAsync(CancellationToken token)
+    {
+        try
+        {
+            await GetServersAsync().WaitAsync(TimeSpan.FromSeconds(4), token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogConnection($"Server list before connecting failed ({ex.GetType().Name})");
+        }
+    }
+
+    /// <summary>
     /// Automatic mode ranks the servers by ping, and a ping is only believed for ten minutes on the
     /// network it was taken on. After a network change or a long pause most of them are stale and the
     /// order silently fell back to the panel's: a far server could come first. Measure again (at most
@@ -904,7 +928,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     /// <summary>Saves the panel's view of this device's network; values fetched through the VPN never overwrite.</summary>
     private void RememberClientNetwork(ColituServersResponse servers)
     {
-        var place = ColituAdaptiveConnect.ListPlace(Status == ColituVpnStatus.Disconnected, servers.ClientCountry, servers.ClientNetwork);
+        var place = ColituAdaptiveConnect.ListPlace(TunnelOff, servers.ClientCountry, servers.ClientNetwork);
         var country = place.Country.NullIfEmpty() ?? _session.ClientCountry;
         var network = ColituAdaptiveConnect.ResolveClientNetwork(place.Network, _session.ClientNetwork);
         var session = _session with { ClientCountry = country, ClientNetwork = network };
@@ -1236,6 +1260,10 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 _otherVpnWarned = true;
                 LogConnection($"Another VPN adapter holds a default route: {other}");
                 Notice?.Invoke("warn.otherVpn");
+            }
+            if (automatic && _lastServers.Count == 0)
+            {
+                await EnsureServerListAsync(token);
             }
             if (automatic && !quick && !KillSwitchEngaged)
             {
