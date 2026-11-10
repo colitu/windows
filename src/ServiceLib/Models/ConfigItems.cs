@@ -148,6 +148,9 @@ public class TunModeItem
     public bool EnableIPv6Address { get; set; }
     public string IcmpRouting { get; set; }
     public bool EnableLegacyProtect { get; set; }
+
+    // Ranges that auto_route leaves on the network adapter (sing-box route_exclude_address).
+    public List<string>? RouteExcludeAddress { get; set; }
 }
 
 [Serializable]

@@ -5130,6 +5130,14 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         }
     }
 
+    // The local network stays outside the tunnel unless the kill switch is told to block it.
+    internal static bool LocalNetworkBypassed(ColituVpnPreferences preferences) =>
+        !(preferences.KillSwitchEnabled && !preferences.KillSwitchAllowLan);
+
+    // Same ranges the kill switch lets through (private, link-local, multicast, broadcast).
+    internal static List<string> LocalNetworkRouteExclusions() =>
+        [.. ColituKillSwitch.LocalNetworks.Select(net => $"{net.Address}/{net.Prefix}")];
+
     private async Task ApplyRuntimePreferencesAsync(ColituVpnPreferences preferences)
     {
         preferences = preferences.Normalize();
@@ -5140,6 +5148,12 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         // tunnel, and sing-box's strict route would add a second, conflicting set of rules. Without
         // it, strict route is what keeps Windows from also asking the network adapter's DNS server.
         _config.TunModeItem.StrictRoute = tun && !preferences.KillSwitchEnabled;
+        // The local network (printers, NAS, casting, the router page) is never routed into the
+        // adapter: a routing rule alone left it captured by the TUN, so it hung. Kept in only when
+        // the kill switch is told to block the local network (its WFP filters then block it).
+        _config.TunModeItem.RouteExcludeAddress = tun && LocalNetworkBypassed(preferences)
+            ? LocalNetworkRouteExclusions()
+            : null;
         // sing-box runs the TUN adapter for every transport and hands Xray's connections to Xray
         // (as on Linux). Xray's own TUN sets no DNS server on its adapter, so Windows kept asking
         // the network adapter's resolver: the internet provider saw every name without the kill
@@ -5302,7 +5316,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             Remarks = "Local network direct",
             OutboundTag = Global.DirectTag,
             Ip = ["geoip:private"],
-            Enabled = !(preferences.KillSwitchEnabled && !preferences.KillSwitchAllowLan)
+            Enabled = LocalNetworkBypassed(preferences)
         });
 
         // The user's split-tunnel lists come before the regional rule: an app or site the user

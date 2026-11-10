@@ -131,4 +131,16 @@ public class ColituRuDirectTests
         ColituVpnService.BuildColituRoutingRules(new ColituVpnPreferences(KillSwitchEnabled: true, KillSwitchAllowLan: false))
             .Single(r => r.Id == ColituVpnService.LanDirectRuleId).Enabled.Should().BeFalse();
     }
+
+    [Fact]
+    public void LocalNetwork_IsExcludedFromTheTunRoutesUnlessTheKillSwitchBlocksIt()
+    {
+        ColituVpnService.LocalNetworkRouteExclusions().Should().Contain(
+            ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "fe80::/10", "fc00::/7"]);
+
+        ColituVpnService.LocalNetworkBypassed(new ColituVpnPreferences()).Should().BeTrue();
+        ColituVpnService.LocalNetworkBypassed(new ColituVpnPreferences(KillSwitchEnabled: true)).Should().BeTrue();
+        ColituVpnService.LocalNetworkBypassed(new ColituVpnPreferences(KillSwitchEnabled: false, KillSwitchAllowLan: false)).Should().BeTrue();
+        ColituVpnService.LocalNetworkBypassed(new ColituVpnPreferences(KillSwitchEnabled: true, KillSwitchAllowLan: false)).Should().BeFalse();
+    }
 }
