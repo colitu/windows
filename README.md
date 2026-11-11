@@ -15,7 +15,7 @@ system proxy, TUN adapter, routing and DNS.
 | | |
 |---|---|
 | App | `Colitu VPN` (`ColituVPN.exe`), WPF on .NET 10 |
-| Version | `3.1.3` (`src/Directory.Build.props`) |
+| Version | `3.1.4` (`src/Directory.Build.props`) |
 | OS | Windows 10 / 11, x64 |
 | Languages | Russian, English, Turkish |
 | Website | <https://colitu.com> · [downloads](https://colitu.com/downloads/windows) |
@@ -115,7 +115,7 @@ folder holds a file that is not listed, and it copies only the pinned files by n
 Then run:
 
 ```powershell
-pwsh .\scripts\build-installer.ps1 -Version 3.1.3
+pwsh .\scripts\build-installer.ps1 -Version 3.1.4
 ```
 
 The output in `artifacts/installer/` is `ColituVPN-Setup-<version>-x64.exe`, a
