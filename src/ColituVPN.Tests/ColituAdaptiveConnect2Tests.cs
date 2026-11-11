@@ -394,4 +394,67 @@ public class ColituAdaptiveConnect2Tests
         ColituTransportOrder.WithoutSilent(["vless-reality", "trojan"], item => item, latency).Should().Equal("vless-reality", "trojan");
         ColituTransportOrder.WithoutSilent(["hysteria2", "shadowsocks"], item => item, new Dictionary<string, int> { ["shadowsocks"] = 61 }).Should().Equal("hysteria2", "shadowsocks");
     }
+
+    [Fact]
+    public void ServerOutage_NothingCanConnect_OnlyWhenEveryTransportIsASilentTcpOne()
+    {
+        var latency = new Dictionary<string, int> { ["vless-reality"] = -1, ["trojan"] = -1 };
+        // Only silent TCP transports: the server is given up at once (no 6-8 s per transport).
+        ColituTransportOrder.NothingCanConnect(["vless-reality", "trojan"], item => item, latency).Should().BeTrue();
+        // Hysteria2 is not measured (UDP): it may still connect.
+        ColituTransportOrder.NothingCanConnect(["hysteria2", "vless-reality", "trojan"], item => item, latency).Should().BeFalse();
+        ColituTransportOrder.NothingCanConnect(["vless-reality", "trojan"], item => item, new Dictionary<string, int> { ["vless-reality"] = -1, ["trojan"] = 70 }).Should().BeFalse();
+        ColituTransportOrder.NothingCanConnect(Array.Empty<string>(), item => item, latency).Should().BeFalse();
+    }
+
+    [Fact]
+    public void PenalizedLast_MovesPenalizedServersBehindTheRest_StableOtherwise()
+    {
+        var order = new List<string> { "dead", "a", "b", "dead2", "c" };
+        ColituTransportOrder.PenalizedLast(order, id => id.StartsWith("dead")).Should().Equal("a", "b", "c", "dead", "dead2");
+        // Nothing penalized: the very same list.
+        ColituTransportOrder.PenalizedLast(order, _ => false).Should().BeSameAs(order);
+        // Everything penalized: the order itself is all there is.
+        ColituTransportOrder.PenalizedLast(order, _ => true).Should().BeSameAs(order);
+    }
+
+    [Fact]
+    public void FlapGuard_ADropRightAfterTheConnectDemotesAtOnce()
+    {
+        var guard = new ColituFlapGuard();
+        var now = DateTimeOffset.Parse("2026-11-11T09:39:47Z");
+        guard.Drop("wifi", "pl", "vless-reality", TimeSpan.FromSeconds(16), now).Should().BeTrue();
+        guard.IsDemoted("wifi", "pl", "vless-reality", now).Should().BeTrue();
+        // Per server, transport and network.
+        guard.IsDemoted("wifi", "pl", "hysteria2", now).Should().BeFalse();
+        guard.IsDemoted("wifi", "al", "vless-reality", now).Should().BeFalse();
+        guard.IsDemoted("lte", "pl", "vless-reality", now).Should().BeFalse();
+        // It ends after 30 minutes.
+        guard.IsDemoted("wifi", "pl", "vless-reality", now + ColituFlapGuard.DemotedFor).Should().BeFalse();
+    }
+
+    [Fact]
+    public void FlapGuard_LongSessionsNeedTwoDropsWithinTheWindow()
+    {
+        var guard = new ColituFlapGuard();
+        var now = DateTimeOffset.Parse("2026-11-11T08:54:28Z");
+        var long_ = TimeSpan.FromMinutes(38);
+        guard.Drop("wifi", "al", "vless-reality", long_, now).Should().BeFalse();
+        guard.IsDemoted("wifi", "al", "vless-reality", now).Should().BeFalse();
+        // The second drop 16 minutes later: outside the 15-minute window, still one drop.
+        guard.Drop("wifi", "al", "vless-reality", long_, now + TimeSpan.FromMinutes(16)).Should().BeFalse();
+        // A third 10 minutes after that: two within the window.
+        guard.Drop("wifi", "al", "vless-reality", long_, now + TimeSpan.FromMinutes(26)).Should().BeTrue();
+        guard.IsDemoted("wifi", "al", "vless-reality", now + TimeSpan.FromMinutes(27)).Should().BeTrue();
+    }
+
+    [Fact]
+    public void FlapGuard_IgnoresDropsWithoutServerOrTransport()
+    {
+        var guard = new ColituFlapGuard();
+        var now = DateTimeOffset.UtcNow;
+        guard.Drop("wifi", null, "trojan", TimeSpan.Zero, now).Should().BeFalse();
+        guard.Drop("wifi", "pl", null, TimeSpan.Zero, now).Should().BeFalse();
+        guard.IsDemoted("wifi", "pl", null, now).Should().BeFalse();
+    }
 }
