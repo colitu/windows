@@ -72,6 +72,30 @@ function Test-PinnedCores {
         if (-not $sidecarDirs.ContainsKey($dir)) { $sidecarDirs[$dir] = @() }
         $sidecarDirs[$dir] += (Split-Path -Leaf $path).ToLowerInvariant()
     }
+    # ColituGecko (gecko-client): pinned the same way once sidecars.gecko.commit is set;
+    # until then skipped (the installer ships without it) and its folders must stay empty.
+    $gecko = $manifest.sidecars.gecko
+    $geckoPinned = $gecko -and -not [string]::IsNullOrWhiteSpace($gecko.commit)
+    if ($gecko -and -not $geckoPinned) {
+        Write-Warning "gecko-client is not pinned in scripts/cores.json: not checked, not shipped (Gecko stays off in the app)."
+    }
+    foreach ($file in @($gecko.files.PSObject.Properties | Where-Object { $_ })) {
+        $path = Join-Path $repoRoot $file.Name
+        if ($geckoPinned) {
+            if (-not (Test-Path -LiteralPath $path)) {
+                $bad += "$($file.Name): missing (run scripts/build-sidecars.ps1)"
+            }
+            elseif ((Get-Sha256 $path) -ne $file.Value.sha256) {
+                $bad += "$($file.Name): SHA-256 is not the one colitu-gecko $($gecko.commit.Substring(0, 7)) builds (run scripts/build-sidecars.ps1)"
+            }
+        }
+        elseif (Test-Path -LiteralPath $path) {
+            $bad += "$($file.Name): present, but gecko-client is not pinned in scripts/cores.json"
+        }
+        $dir = Split-Path -Parent $path
+        if (-not $sidecarDirs.ContainsKey($dir)) { $sidecarDirs[$dir] = @() }
+        if ($geckoPinned) { $sidecarDirs[$dir] += (Split-Path -Leaf $path).ToLowerInvariant() }
+    }
     foreach ($dir in $sidecarDirs.Keys) {
         if (-not (Test-Path -LiteralPath $dir)) { continue }
         foreach ($item in Get-ChildItem -LiteralPath $dir -Force) {

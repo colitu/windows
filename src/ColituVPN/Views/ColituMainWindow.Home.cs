@@ -84,6 +84,7 @@ public partial class ColituMainWindow
         {
             return;
         }
+        ApplyConnectionInfo();
 
         var status = _vpn.Status;
         var on = status == ColituVpnStatus.Connected;
@@ -97,7 +98,9 @@ public partial class ColituMainWindow
             : _planRequired ? loc["home.title.noplan"]
             : _upsell.BlocksConnect ? loc["upsell.out.title"]
             : loc["home.title.off"];
-        HomeSubtitle.Text = on ? loc.Format("home.sub.on", ("server", ServerLabel(_vpn.ConnectedServer) ?? loc["server.auto"]))
+        var overGecko = on && _vpn.ConnectedOverGecko;
+        HomeSubtitle.Text = overGecko ? loc.Format("home.sub.on", ("server", $"ColituGecko · {loc["gecko.autoExit"]}"))
+            : on ? loc.Format("home.sub.on", ("server", ServerLabel(_vpn.ConnectedServer) ?? loc["server.auto"]))
             : blocked ? loc[_vpn.KillSwitchHeldAfterCrash ? "home.sub.blockedCrash"
                 : _vpn.KillSwitchHeldAfterFailure ? "home.sub.blockedFailed"
                 : "home.sub.blocked"]
@@ -127,11 +130,23 @@ public partial class ColituMainWindow
             }
         }
         // Connected: the method in use. Otherwise the pick for the next connect (automatic when none).
-        var protocol = on && _vpn.ConnectedProtocol is { Length: > 0 } active ? active : _vpn.PreferredTransport;
-        var method = protocol.Length > 0 ? ColituTransportNames.Of(protocol, loc) : loc["transport.auto"];
+        var protocol = on && _vpn.ConnectedProtocol is { Length: > 0 } active ? active : ColituTransportChoice.Shown(_vpn.PreferredTransport, _vpn.GeckoOffer);
+        // A Whitelist row is a way in, not a protocol: the chip shows it, locked; the pick is kept.
+        var whitelistChip = ColituTransportChoice.WhitelistChipLabel(_vpn.WhitelistSelected, loc["transport.vless-reality-relay"]);
+        var method = whitelistChip ?? (protocol.Length > 0 ? ColituTransportNames.Of(protocol, loc) : loc["transport.auto"]);
         ProtocolChip.Visibility = Visibility.Visible;
         ProtocolChip.ToolTip = loc["home.protocol.hint"];
-        ProtocolChipText.Text = $"{loc["home.protocol"]} · {method} ▾".ToUpper(loc.Culture);
+        // ColituGecko (connected over it, or picked for the next connect): the word shows as the animated
+        // brand gradient instead of a plain method name.
+        var geckoChip = whitelistChip == null && protocol == ColituTransportChoice.Gecko;
+        ProtocolChipText.Text = geckoChip
+            ? $"{loc["home.protocol"]} · ".ToUpper(loc.Culture)
+            : whitelistChip != null
+                ? $"{loc["home.protocol"]} · {method}".ToUpper(loc.Culture)
+                : $"{loc["home.protocol"]} · {method} ▾".ToUpper(loc.Culture);
+        ProtocolChipGecko.Visibility = geckoChip ? Visibility.Visible : Visibility.Collapsed;
+        ProtocolChipGecko.ShowDot = overGecko;
+        ProtocolChipTail.Visibility = geckoChip ? Visibility.Visible : Visibility.Collapsed;
 
         StatusChipText.Text = on ? loc["status.protected"]
             : blocked ? loc["status.blocked"]
@@ -427,6 +442,19 @@ public partial class ColituMainWindow
     // ── Location card ──────────────────────────────────────────────────────
     private void ApplyLocationCard()
     {
+        if (_vpn.ConnectedOverGecko)
+        {
+            // ColituGecko picks its exit itself: no server city, the protocol and "automatic exit".
+            var gecko = new ColituServerRow { IsAuto = true, Title = "ColituGecko", Subtitle = Loc.I["gecko.autoExit"] };
+            HomeFlag.Content = gecko;
+            HomeServerTitle.Text = gecko.Title;
+            HomeServerSubtitle.Text = gecko.Subtitle;
+            HomeServerCheck.Background = (Brush)FindResource("SuccessBrush");
+            HomeServerCheck.BorderBrush = (Brush)FindResource("SuccessBrush");
+            HomeServerCheckMark.Visibility = Visibility.Visible;
+            ApplyServerShortcuts();
+            return;
+        }
         // "Best server" shows the server it connects to first (the same rank[0] the connect uses).
         var server = _vpn.Status is ColituVpnStatus.Connected && _vpn.ConnectedServer != null
             ? _vpn.ConnectedServer
@@ -659,7 +687,8 @@ public partial class ColituMainWindow
         text.Text = Loc.I[key];
         var active = status is "active" or "trialing";
         // Lavender badge with dark text when active, rose glass otherwise (ColituBadge).
-        badge.Background = active ? (Brush)FindResource("BadgeBrush") : new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0x6B, 0x7A));
+        // Active: the lavender gradient slowly breathes between the brand violets (ActiveBadgeBrush).
+        badge.Background = active ? ActiveBadgeBrush(badge) : new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0x6B, 0x7A));
         badge.BorderBrush = Brushes.Transparent;
         text.Foreground = (Brush)FindResource(active ? "OnAccentBrush" : "DangerBrush");
     }
@@ -810,8 +839,8 @@ public partial class ColituMainWindow
     private const string SplitTunnelingDocPath = "split-tunneling";
 
     /// <summary>
-    /// The chip under "Connected" while Russian sites leave outside the tunnel, and the one-time
-    /// notice the first time that happens (also for users who connected before this setting existed).
+    /// Russian destinations are always direct, so the chip and the one-time notice that used to
+    /// announce the exception are no longer shown.
     /// </summary>
     private void ApplyRuDirectIndicator()
     {
@@ -819,20 +848,8 @@ public partial class ColituMainWindow
         {
             return;
         }
-        // Simple mode hides privacy mode, so neither the chip nor its one-time notice.
-        var active = _vpn.RussianSitesDirectActive && _vpn.AdvancedMode;
-        RuDirectChip.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
-        RuDirectChipText.Text = Loc.I["privacy.chip"].ToUpper(Loc.I.Culture);
-        if (active && !_vpn.Preferences.RuDirectNoticeShown && RuDirectNotice.Visibility != Visibility.Visible)
-        {
-            RuDirectNotice.Visibility = Visibility.Visible;
-            FadeIn(RuDirectNotice, 8);
-        }
-        else if (!active && RuDirectNotice.Visibility == Visibility.Visible)
-        {
-            // Disconnected or switched to a Russian server before answering: ask next time.
-            RuDirectNotice.Visibility = Visibility.Collapsed;
-        }
+        RuDirectChip.Visibility = Visibility.Collapsed;
+        RuDirectNotice.Visibility = Visibility.Collapsed;
     }
 
     private void RuDirectChip_Click(object sender, MouseButtonEventArgs e)
@@ -865,22 +882,48 @@ public partial class ColituMainWindow
     /// <summary>The protocol chip opens the connection method menu; a new pick reconnects a live tunnel.</summary>
     private void ProtocolChip_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        var loc = Loc.I;
-        var current = _vpn.PreferredTransport;
-        var menu = new ContextMenu { PlacementTarget = ProtocolChip, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
-        foreach (var method in new[] { "" }.Concat(ColituTransportChoice.Methods))
+        if (_vpn.WhitelistSelected)
         {
+            // Locked while a Whitelist row is picked: there is no method to choose there.
+            e.Handled = true;
+            return;
+        }
+        var loc = Loc.I;
+        var offer = _vpn.GeckoOffer;
+        var current = ColituTransportChoice.Shown(_vpn.PreferredTransport, offer);
+        var menu = new ContextMenu { PlacementTarget = ProtocolChip, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        foreach (var entry in ColituTransportChoice.Menu(offer))
+        {
+            var method = entry.Method;
             var item = new MenuItem
             {
-                Header = method.Length == 0 ? loc["transport.auto"] : ColituTransportNames.Of(method, loc),
-                IsCheckable = true,
-                IsChecked = method == current
+                Header = method == ColituTransportChoice.Gecko ? GeckoMenuHeader(entry.Enabled, loc)
+                    : method.Length == 0 ? loc["transport.auto"] : ColituTransportNames.Of(method, loc),
+                IsCheckable = entry.Enabled,
+                IsChecked = method == current,
+                IsEnabled = entry.Enabled
             };
+            if (method == ColituTransportChoice.Gecko)
+            {
+                System.Windows.Automation.AutomationProperties.SetName(item, entry.Enabled ? "ColituGecko" : $"ColituGecko, {loc["gecko.unavailable"]}");
+            }
             item.Click += async (_, _) => await PickTransportAsync(method);
             menu.Items.Add(item);
         }
         menu.IsOpen = true;
         e.Handled = true;
+    }
+
+    /// <summary>The ColituGecko menu entry: the animated label; offered but unavailable now: greyed out with the reason.</summary>
+    private static FrameworkElement GeckoMenuHeader(bool enabled, Loc loc)
+    {
+        var header = new StackPanel { Orientation = Orientation.Horizontal };
+        header.Children.Add(new ColituGeckoLabel { Palette = ColituGeckoPalette.Auto, ShowDot = enabled });
+        if (!enabled)
+        {
+            header.Children.Add(new TextBlock { Text = $" · {loc["gecko.unavailable"]}", VerticalAlignment = VerticalAlignment.Center });
+        }
+        return header;
     }
 
     private async Task PickTransportAsync(string method)

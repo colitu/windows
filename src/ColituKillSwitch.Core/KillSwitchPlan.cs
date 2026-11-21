@@ -43,6 +43,10 @@ public sealed record KsInstallLayout(string AppPath, IReadOnlyList<string> CoreP
         [
             System.IO.Path.Combine(directory, "bin", "xray", "xray.exe"),
             System.IO.Path.Combine(directory, "bin", "sing_box", "sing-box.exe"),
+            // ColituGecko: gecko-client dials Colitu's Gecko servers itself (TCP and UDP, not through a
+            // core), so it is permitted exactly like the cores (everywhere, or only to the server
+            // endpoints; a Gecko-only connection arms the kill switch with the cores permitted everywhere).
+            System.IO.Path.Combine(directory, "bin", "colitu-gecko", "gecko-client.exe"),
         ]);
 }
 

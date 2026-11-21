@@ -22,6 +22,9 @@ internal static class ColituBuildValues
     /// <summary>Comma-separated ad-blocking DoH URLs, or null.</summary>
     public static string? AdBlockDoh => Read(Values.Value, "adBlockDoh");
 
+    /// <summary>Built-in API relays, <c>id|host:port|sni|region|wl</c> separated by <c>;</c>, or null.</summary>
+    public static string? Relays => Read(Values.Value, "relays");
+
     internal static string? Read(JsonElement? values, string name) =>
         values is { } root && root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()

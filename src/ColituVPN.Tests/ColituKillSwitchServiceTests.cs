@@ -211,6 +211,29 @@ public class ColituKillSwitchServiceTests
         }
     }
 
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void TheAppOutranksTheDnsBlockAndTheCatchAll_OnEveryLayer(bool endpoints, bool allowLan)
+    {
+        // Regression guard for the whitelist check: its TCP 443 probes to foreign and domestic sites
+        // leave the app while the kill switch holds; only the app permit lets them out.
+        var arm = endpoints ? EndpointsArm() : new KsArm { CoreAccess = "full" };
+        arm.AllowLan = allowLan;
+        var filters = Plan(arm);
+        foreach (var layer in Enum.GetValues<KsLayer>())
+        {
+            var mine = filters.Where(filter => filter.Layer == layer).ToList();
+            var app = mine.Single(filter => filter.Name == "Permit the Colitu app");
+            app.Permit.Should().BeTrue();
+            app.Conditions.Should().Equal(new KsApp(Layout.AppPath));
+            var blocks = mine.Where(filter => filter.Name is "Block DNS outside the VPN" or "Block everything else").ToList();
+            blocks.Select(filter => filter.Name).Distinct().Should().HaveCount(2);
+            blocks.Should().OnlyContain(filter => !filter.Permit && filter.Weight < app.Weight);
+        }
+    }
+
     [Fact]
     public void Cores_ReachOnlyTheServerEndpoints_WhenRestricted()
     {

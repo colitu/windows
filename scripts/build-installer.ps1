@@ -12,6 +12,9 @@ param(
     # Comma-separated https origins of the API mirrors (failover). Like the signing key they stay out
     # of the repository; the build embeds them (ColituMirrors assembly metadata).
     [string]$MirrorsPath = $(if ($env:COLITU_MIRRORS_FILE) { $env:COLITU_MIRRORS_FILE } else { Join-Path $PSScriptRoot "..\..\_gizli_anahtarlar\colitu-mirrors.txt" }),
+    # Built-in API relays (id|host:port|sni|region|wl;...), kept out of the repository like the mirrors.
+    # Optional: no file, no built-in relays (the signed endpoint list can still name them).
+    [string]$RelaysPath = $(if ($env:COLITU_RELAYS_FILE) { $env:COLITU_RELAYS_FILE } else { Join-Path $PSScriptRoot "..\..\_gizli_anahtarlar\colitu-relays.txt" }),
     # Both lists go into one file next to ColituVPN.exe (colitu-build.json) rather than into the program,
     # so the executables are reproducible from the public source. To rebuild a published release, pass
     # the colitu-build.json of an installed copy here (instead of the two lists) together with -SkipManifest.
@@ -138,7 +141,13 @@ else {
     $mirrors = (Get-Content -LiteralPath $MirrorsPath -Raw).Trim()
     if (-not $mirrors.StartsWith("https://")) { throw "The API mirror list is empty or invalid: $MirrorsPath" }
     # Read by ColituBuildValues in the app. Fixed layout (UTF-8, no BOM, LF): the same lists give the same bytes.
-    $buildValuesText = '{"mirrors":' + (ConvertTo-Json $mirrors -Compress) + ',"adBlockDoh":' + (ConvertTo-Json $adBlockDoh -Compress) + "}`n"
+    $relaysField = ""
+    if ($RelaysPath -and (Test-Path -LiteralPath $RelaysPath)) {
+        $relays = (Get-Content -LiteralPath $RelaysPath -Raw).Trim()
+        if ($relays) { $relaysField = ',"relays":' + (ConvertTo-Json $relays -Compress) }
+    }
+    # No relays: the file is byte for byte what it was before relays existed.
+    $buildValuesText = '{"mirrors":' + (ConvertTo-Json $mirrors -Compress) + ',"adBlockDoh":' + (ConvertTo-Json $adBlockDoh -Compress) + $relaysField + "}`n"
     $buildValuesBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($buildValuesText)
 }
 
@@ -231,6 +240,21 @@ $cslSourceDir = Join-Path $repoRoot "csl-dosyalari\$Runtime"
 $binCslDir = Join-Path $publishDir "bin\colitu-csl"
 New-Item -ItemType Directory -Force -Path $binCslDir | Out-Null
 Copy-Listed $cslSourceDir @("csl-client.exe") $binCslDir
+
+# ColituGecko protocol (cmd/gecko-client of the private colituvpn/colitu-gecko): built and pinned by scripts/build-sidecars.ps1
+# like csl-client, from its own commit (sidecars.gecko). Shown only when the panel offers Gecko;
+# without the file the app reports "gecko-client missing" and skips the Gecko step. While the pin
+# is empty it is skipped here (fetch-cores.ps1 -Verify warned above).
+$geckoManifest = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "cores.json") -Raw | ConvertFrom-Json).sidecars.gecko
+if ($geckoManifest -and -not [string]::IsNullOrWhiteSpace($geckoManifest.commit)) {
+    $geckoSourceDir = Join-Path $repoRoot "gecko-dosyalari\$Runtime"
+    $binGeckoDir = Join-Path $publishDir "bin\colitu-gecko"
+    New-Item -ItemType Directory -Force -Path $binGeckoDir | Out-Null
+    Copy-Listed $geckoSourceDir @("gecko-client.exe") $binGeckoDir
+}
+else {
+    Write-Warning "gecko-client is not pinned in scripts/cores.json: the installer ships without it (Gecko stays off)."
+}
 
 $binSingboxDir = Join-Path $publishDir "bin\sing_box"
 New-Item -ItemType Directory -Force -Path $binSingboxDir | Out-Null

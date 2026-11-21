@@ -37,6 +37,8 @@ public partial class ColituMainWindow
         Loc.I.Changed += OnLanguageChanged;
 
         _vpn.StatusChanged += _ => Dispatcher.BeginInvoke(ApplyStatus);
+        // ColituGecko comes and goes in the protocol menu with the panel's offer.
+        _vpn.GeckoOfferChanged += () => Dispatcher.BeginInvoke(ApplyStatus);
         _vpn.Notice += key => Dispatcher.BeginInvoke(() =>
         {
             ShowToast(Loc.I[key], key.StartsWith("err", StringComparison.Ordinal));
@@ -427,6 +429,7 @@ public partial class ColituMainWindow
         {
             child.Visibility = child == target ? Visibility.Visible : Visibility.Collapsed;
         }
+        HomeBackdrop.Visibility = target == HomePage ? Visibility.Visible : Visibility.Collapsed;
 
         var nav = page switch
         {
@@ -476,6 +479,7 @@ public partial class ColituMainWindow
                 break;
             case "plan":
                 _ = LoadPricingAsync();
+                _ = LoadUsageHistoryAsync();
                 break;
             case "account":
                 _ = LoadDevicesAsync();
@@ -523,22 +527,26 @@ public partial class ColituMainWindow
             return width;
         }
         BrandWordmark.Visibility = Visibility.Visible;
+        BrandLogoMark.Visibility = Visibility.Collapsed;
         BrandMark.Measure(unlimited);
         HeaderRight.Measure(unlimited);
         var total = HeaderBar.ActualWidth;
         var logo = BrandMark.DesiredSize.Width;
-        var mark = logo - BrandWordmark.DesiredSize.Width - 14;
+        // The C mark alone (28 px high) when the wordmark does not fit.
+        const double mark = 34;
         var right = HeaderRight.DesiredSize.Width;
         const double Gap = 32;
+        // Equal side columns keep the tab pill centred in the window.
+        const double SideColumn = 240;
 
         void Columns(bool fixedSides)
         {
-            HeaderLeftColumn.Width = fixedSides ? new GridLength(220) : GridLength.Auto;
-            HeaderRightColumn.Width = fixedSides ? new GridLength(220) : GridLength.Auto;
+            HeaderLeftColumn.Width = fixedSides ? new GridLength(SideColumn) : GridLength.Auto;
+            HeaderRightColumn.Width = fixedSides ? new GridLength(SideColumn) : GridLength.Auto;
         }
 
         var placed = false;
-        if (logo <= 220 && right <= 220 && Tabs(20, 14) <= total - 440 - Gap)
+        if (logo <= SideColumn && right <= SideColumn && Tabs(20, 14) <= total - 2 * SideColumn - Gap)
         {
             Columns(true);
             placed = true;
@@ -554,6 +562,7 @@ public partial class ColituMainWindow
             {
                 Columns(false);
                 BrandWordmark.Visibility = wordmark ? Visibility.Visible : Visibility.Collapsed;
+                BrandLogoMark.Visibility = wordmark ? Visibility.Collapsed : Visibility.Visible;
                 placed = true;
             }
         }
@@ -823,17 +832,43 @@ public partial class ColituMainWindow
         fastest.Click += async (_, _) => await TrayPickAsync(null, Loc.I["server.auto"]);
         Add(fastest);
         var pickedId = auto ? null : _vpn.SavedServerId;
-        foreach (var server in ShortcutServers())
+        // Favourites in a submenu (all of them), then up to three recently used ones; a click connects.
+        var favorites = ResolveServers(_vpn.FavoriteServerIds).Where(server => server.Available).ToList();
+        if (favorites.Count > 0)
         {
-            var title = ColituServerRow.From(server).Title;
-            var item = new MenuItem
+            var submenu = new MenuItem { Header = Loc.I["tray.favorites"] };
+            foreach (var server in favorites)
             {
-                Header = title,
-                IsCheckable = true,
-                IsChecked = string.Equals(server.Id, pickedId, StringComparison.OrdinalIgnoreCase)
-            };
-            item.Click += async (_, _) => await TrayPickAsync(server, title);
-            Add(item);
+                submenu.Items.Add(TrayServerItem(server, pickedId));
+            }
+            Add(submenu);
+        }
+        foreach (var server in ResolveServers(_vpn.RecentServerIds).Where(server => server.Available && !favorites.Contains(server)).Take(3))
+        {
+            Add(TrayServerItem(server, pickedId));
+        }
+    }
+
+    private MenuItem TrayServerItem(ColituVpnServer server, string? pickedId)
+    {
+        var title = ColituServerRow.From(server).Title;
+        var item = new MenuItem
+        {
+            Header = title,
+            IsCheckable = true,
+            IsChecked = string.Equals(server.Id, pickedId, StringComparison.OrdinalIgnoreCase)
+        };
+        item.Click += async (_, _) => await TrayConnectToAsync(server, title);
+        return item;
+    }
+
+    /// <summary>A server from the tray menu: picks it and, when the VPN is off, connects right away.</summary>
+    private async Task TrayConnectToAsync(ColituVpnServer server, string title)
+    {
+        await TrayPickAsync(server, title);
+        if (_vpn.Status == ColituVpnStatus.Disconnected && !_vpn.KillSwitchEngaged)
+        {
+            await ToggleConnectionAsync();
         }
     }
 

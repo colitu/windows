@@ -22,7 +22,8 @@ public class ColituRuDirectTests
             var domain = rules.Single(r => r.Id == "colitu-ru-direct-domain");
             domain.Enabled.Should().BeTrue();
             domain.OutboundTag.Should().Be(Global.DirectTag);
-            domain.Domain.Should().Equal("geosite:category-ru");
+            domain.Domain.Should().Equal(ColituVpnService.RussianDirectDomains);
+            domain.Domain.Should().Contain(["geosite:category-ru", "domain:ru", "domain:su", "domain:xn--p1ai", "domain:vk.com", "domain:yandex.net", "domain:tbank.com", "domain:moscow", "domain:tatar"]);
 
             var ip = rules.Single(r => r.Id == "colitu-ru-direct-ip");
             ip.Enabled.Should().BeTrue();
@@ -38,18 +39,9 @@ public class ColituRuDirectTests
     [Theory]
     [InlineData("RU")]
     [InlineData("ru")]
-    public void RussianServer_KeepsRussianSitesInTheTunnel(string country)
-    {
-        var rules = ColituVpnService.BuildColituRoutingRules(new ColituVpnPreferences(), country);
-
-        rules.Single(r => r.Id == "colitu-ru-direct-domain").Enabled.Should().BeFalse();
-        rules.Single(r => r.Id == "colitu-ru-direct-ip").Enabled.Should().BeFalse();
-    }
-
-    [Theory]
     [InlineData("DE")]
     [InlineData(null)]
-    public void OtherServers_SendRussianSitesDirect(string? country)
+    public void RussianSitesAreDirect_ForEveryServerCountry(string? country)
     {
         var rules = ColituVpnService.BuildColituRoutingRules(new ColituVpnPreferences(), country);
 
@@ -61,34 +53,44 @@ public class ColituRuDirectTests
     [InlineData("DE")]
     [InlineData("RU")]
     [InlineData(null)]
-    public void PrivacyMode_SendsEverythingThroughTheTunnel(string? country)
+    public void PrivacyMode_KeepsTheRussianDirectRule_AndSendsEverythingElseThroughTheTunnel(string? country)
     {
         var rules = ColituVpnService.BuildColituRoutingRules(new ColituVpnPreferences(PrivacyModeEnabled: true), country);
 
-        rules.Single(r => r.Id == "colitu-ru-direct-domain").Enabled.Should().BeFalse();
-        rules.Single(r => r.Id == "colitu-ru-direct-ip").Enabled.Should().BeFalse();
-        // Nothing else on the internet may leave outside the tunnel either; only the local network,
-        // which the server cannot reach.
-        rules.Where(r => r.Enabled && r.OutboundTag == Global.DirectTag).Select(r => r.Id).Should().Equal(ColituVpnService.LanDirectRuleId);
+        var domain = rules.Single(r => r.Id == "colitu-ru-direct-domain");
+        var ip = rules.Single(r => r.Id == "colitu-ru-direct-ip");
+        domain.Enabled.Should().BeTrue();
+        ip.Enabled.Should().BeTrue();
+        // Nothing else may leave outside the tunnel: only the local network (which the server
+        // cannot reach) and the Russian destinations.
+        rules.Where(r => r.Enabled && r.OutboundTag == Global.DirectTag).Select(r => r.Id)
+            .Should().BeEquivalentTo(ColituVpnService.LanDirectRuleId, "colitu-ru-direct-domain", "colitu-ru-direct-ip");
     }
 
-    [Theory]
-    [InlineData("DE", false, true)]
-    [InlineData(null, false, true)]
-    [InlineData(" ru ", false, false)]
-    [InlineData("DE", true, false)]
-    [InlineData("RU", true, false)]
-    public void RussianSitesDirect_OnlyWithoutPrivacyModeAndOutsideRussia(string? country, bool privacyMode, bool expected)
+    [Fact]
+    public void RussianRules_SitAheadOfTheSplitTunnelRules()
     {
-        ColituVpnService.RussianSitesDirect(country, privacyMode).Should().Be(expected);
+        var preferences = new ColituVpnPreferences(AdvancedMode: true, SplitTunnelMode: ColituSplitTunnelModes.Only,
+            SplitTunnelDomains: ["example.com"]);
+        var rules = ColituVpnService.BuildColituRoutingRules(preferences, "DE");
+        var ru = rules.FindIndex(r => r.Id == "colitu-ru-direct-domain");
+        ru.Should().BeGreaterThanOrEqualTo(0);
+        rules.FindIndex(r => r.Id == "colitu-ru-direct-ip").Should().BeGreaterThan(ru);
+        // Every proxy-bound rule that is not DNS/ad block comes after them.
+        foreach (var other in rules.Where(r => r.Enabled && r.OutboundTag == Global.ProxyTag && r.Port != "53"))
+        {
+            rules.IndexOf(other).Should().BeGreaterThan(ru);
+        }
     }
+
+    [Fact]
+    public void RussianSitesDirect_IsAlwaysTrue() => ColituVpnService.RussianSitesDirect().Should().BeTrue();
 
     [Fact]
     public void PrivacyMode_IsOnForNewInstalls_OffForSavedStatesWithoutTheProperty()
     {
         ColituVpnPreferences.ForNewInstall().PrivacyModeEnabled.Should().BeTrue();
         ColituVpnPreferences.ForNewInstall().RuDirectNoticeShown.Should().BeFalse();
-        ColituVpnService.RussianSitesDirect("DE", ColituVpnPreferences.ForNewInstall().PrivacyModeEnabled).Should().BeFalse();
     }
 
     [Fact]

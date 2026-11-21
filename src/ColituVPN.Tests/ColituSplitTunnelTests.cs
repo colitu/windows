@@ -91,9 +91,9 @@ public class ColituSplitTunnelTests
         rules.Single(rule => rule.Id == ColituSplitTunnel.RuleDomainsId).Domain.Should().Equal("domain:bank.example");
         rules.Single(rule => rule.Id == ColituSplitTunnel.RuleNetworksId).Ip.Should().Equal("198.51.100.0/24");
         rules.Should().NotContain(rule => rule.Id == ColituSplitTunnel.RuleRestId);
-        // Ad blocking and DNS protection come first; the user's choice before the regional rule.
+        // Ad blocking and DNS protection come first; the Russian direct rules (never overridable) before the user's choice.
         rules.FindIndex(rule => rule.Id == "colitu-ad-block").Should().BeLessThan(rules.IndexOf(apps));
-        rules.IndexOf(apps).Should().BeLessThan(rules.FindIndex(rule => rule.Id == "colitu-ru-direct-domain"));
+        rules.FindIndex(rule => rule.Id == "colitu-ru-direct-ip").Should().BeLessThan(rules.IndexOf(apps));
     }
 
     [Fact]

@@ -60,6 +60,7 @@ public partial class ColituMainWindow
         _supportImages.Clear();
         _diagAsker.Reset();
         NavSupportDot.Visibility = Visibility.Collapsed;
+        ShowSupportTyping(false);
         ShowSupportTab(false);
         SupportList.ItemsSource = null;
         SupportMessages.Children.Clear();
@@ -206,7 +207,7 @@ public partial class ColituMainWindow
         var hidden = !IsVisible || WindowState == WindowState.Minimized;
         if (hidden)
         {
-            TrayIcon.ShowNotification("Colitu VPN", Loc.I["support.newReply"]);
+            _ = NotifySupportReplyInTrayAsync();
         }
         else if (_page != "support")
         {
@@ -219,6 +220,10 @@ public partial class ColituMainWindow
     private void ApplySupportBadge()
     {
         NavSupportDot.Visibility = _supportUnread > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NavSupportCount.Text = _supportUnread > 9 ? "9+" : Math.Max(0, _supportUnread).ToString(Loc.I.Culture);
+        System.Windows.Automation.AutomationProperties.SetName(NavSupport, _supportUnread > 0
+            ? $"{Loc.I["nav.liveSupport"]}, {Loc.I["support.newReply"]} ({_supportUnread})"
+            : Loc.I["nav.liveSupport"]);
     }
 
     private void PulseSupportDot()
@@ -502,7 +507,9 @@ public partial class ColituMainWindow
                 ApplySupportThreadHeader(thread.Conversation);
             }
             var messages = thread.Messages ?? [];
-            var signature = $"{messages.Count}:{messages.LastOrDefault()?.Id}";
+            ShowSupportTyping(thread.PeerTyping);
+            // A read receipt arriving changes nothing else: count the read messages in the signature.
+            var signature = $"{messages.Count}:{messages.LastOrDefault()?.Id}:{messages.Count(message => message.ReadAt != null)}";
             if (signature == _supportSignature && !forceScroll)
             {
                 return;
@@ -573,7 +580,12 @@ public partial class ColituMainWindow
         }
     }
 
-    private FrameworkElement BuildBubble(ColituSupportMessage message, DateTimeOffset local)
+    private FrameworkElement BuildBubble(ColituSupportMessage message, DateTimeOffset local) =>
+        BuildBubbleCore(message, local, FindResource, (attachment, mine) => attachment.IsImage ? BuildImageAttachment(attachment) : BuildFileAttachment(attachment, mine));
+
+    /// <summary>One chat bubble; resources come from <paramref name="resource"/> so the preview test can draw it without the window.</summary>
+    internal static FrameworkElement BuildBubbleCore(ColituSupportMessage message, DateTimeOffset local, Func<object, object> resource,
+        Func<ColituSupportAttachment, bool, FrameworkElement>? attachmentView)
     {
         var mine = message.Sender == "user";
         var body = new StackPanel();
@@ -584,7 +596,7 @@ public partial class ColituMainWindow
             {
                 name += " · " + message.AdminName;
             }
-            body.Children.Add(new TextBlock { Text = name, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = (Brush)FindResource("LilacBrush"), Margin = new Thickness(0, 0, 0, 5) });
+            body.Children.Add(new TextBlock { Text = name, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = (Brush)resource("LilacBrush"), Margin = new Thickness(0, 0, 0, 5) });
         }
         if (!string.IsNullOrWhiteSpace(message.Body))
         {
@@ -596,12 +608,12 @@ public partial class ColituMainWindow
                 IsReadOnly = true,
                 BorderThickness = new Thickness(0),
                 Background = Brushes.Transparent,
-                Foreground = mine ? (Brush)FindResource("OnAccentBrush") : (Brush)FindResource("TextBrush"),
+                Foreground = mine ? (Brush)resource("OnAccentBrush") : (Brush)resource("TextBrush"),
                 FontSize = 14,
                 Padding = new Thickness(0),
                 FocusVisualStyle = null,
                 Cursor = Cursors.IBeam,
-                SelectionBrush = (Brush)FindResource("VioletBrush")
+                SelectionBrush = (Brush)resource("VioletBrush")
             };
             text.Template = PlainTextTemplate();
             // Read-only text field: named by its sender for screen readers (the text is its value).
@@ -611,15 +623,21 @@ public partial class ColituMainWindow
         }
         foreach (var attachment in message.Attachments ?? [])
         {
-            body.Children.Add(attachment.IsImage ? BuildImageAttachment(attachment) : BuildFileAttachment(attachment, mine));
+            if (attachmentView != null)
+            {
+                body.Children.Add(attachmentView(attachment, mine));
+            }
         }
+        var receipt = mine ? (message.ReadAt is { } readAt
+                ? $"  ·  ✓✓ {Loc.I["support.read"]} {readAt.ToLocalTime().ToString("t", Loc.I.Culture)}"
+                : $"  ·  ✓ {Loc.I["support.sent"]}") : "";
         body.Children.Add(new TextBlock
         {
-            Text = local.ToString("t", Loc.I.Culture),
+            Text = local.ToString("t", Loc.I.Culture) + receipt,
             FontSize = 12,
             Margin = new Thickness(0, 6, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Right,
-            Foreground = mine ? new SolidColorBrush(Color.FromArgb(0xCC, 0x0B, 0x0A, 0x14)) : (Brush)FindResource("DimBrush")
+            Foreground = mine ? new SolidColorBrush(Color.FromArgb(0xCC, 0x0B, 0x0A, 0x14)) : (Brush)resource("DimBrush")
         });
 
         var bubble = new Border
@@ -630,8 +648,8 @@ public partial class ColituMainWindow
             Margin = new Thickness(mine ? 80 : 0, 0, mine ? 0 : 80, 10),
             HorizontalAlignment = mine ? HorizontalAlignment.Right : HorizontalAlignment.Left,
             CornerRadius = mine ? new CornerRadius(18, 18, 6, 18) : new CornerRadius(18, 18, 18, 6),
-            Background = mine ? (Brush)FindResource("ActionBrush") : (Brush)FindResource("Surface2Brush"),
-            BorderBrush = mine ? null : (Brush)FindResource("LineBrush"),
+            Background = mine ? (Brush)resource("ActionBrush") : (Brush)resource("Surface2Brush"),
+            BorderBrush = mine ? null : (Brush)resource("LineBrush"),
             BorderThickness = new Thickness(mine ? 0 : 1)
         };
         return bubble;
@@ -825,7 +843,13 @@ public partial class ColituMainWindow
         {
             return;
         }
-        foreach (var file in dialog.FileNames)
+        AddSupportFiles(files, chips, dialog.FileNames);
+    }
+
+    /// <summary>Adds picked or dropped files (checked: type, size, at most five), then redraws the chips.</summary>
+    private void AddSupportFiles(List<string> files, Panel chips, IEnumerable<string> picked)
+    {
+        foreach (var file in picked)
         {
             if (files.Count >= ColituSupportService.MaxFilesPerMessage)
             {
@@ -851,6 +875,18 @@ public partial class ColituMainWindow
         foreach (var file in files)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal };
+            if (SupportThumbnail(file) is { } thumbnail)
+            {
+                row.Children.Add(new Border
+                {
+                    Width = 44,
+                    Height = 44,
+                    Margin = new Thickness(-8, 0, 10, 0),
+                    CornerRadius = new CornerRadius(8),
+                    ClipToBounds = true,
+                    Background = new ImageBrush(thumbnail) { Stretch = Stretch.UniformToFill }
+                });
+            }
             row.Children.Add(new TextBlock
             {
                 Text = $"{System.IO.Path.GetFileName(file)}  ·  {FormatSize(FileSize(file))}",
@@ -862,11 +898,13 @@ public partial class ColituMainWindow
             var remove = new Button
             {
                 Style = (Style)FindResource("IconButton"),
-                Width = 22,
-                Height = 22,
+                Width = 32,
+                Height = 32,
+                ToolTip = Loc.I["account.remove"],
                 Margin = new Thickness(6, 0, 0, 0),
                 Content = new ShapePath { Data = (Geometry)FindResource("IconX"), Style = (Style)FindResource("Stroke"), Width = 9, Height = 9 }
             };
+            System.Windows.Automation.AutomationProperties.SetName(remove, $"{Loc.I["account.remove"]}: {System.IO.Path.GetFileName(file)}");
             var captured = file;
             remove.Click += (_, _) =>
             {

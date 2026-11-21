@@ -40,6 +40,8 @@
 		<Resource Include="Resources\mark.png" />
 		<Resource Include="Resources\grain.png" />
 		<Resource Include="Resources\banner.jpg" />
+		<Resource Include="Resources\logo-wordmark.png" />
+		<Resource Include="Resources\home-bg.jpg" />
 		<Resource Include="Resources\Fonts\*.ttf" />
 		<Resource Include="flags\**\*.svg" />
 		<!-- Colitu Passport art and sounds (converted from the Android art). -->

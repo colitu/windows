@@ -50,6 +50,16 @@
       "engine-dosyalari/win-arm64/colitu-engine.exe": { "dist": "engine/dist/windows-arm64/colitu-engine.exe", "sha256": "b49b237d3d156fda46946d168d1b6c129c21a3e1514a4d35659bd0b6cb298b88" },
       "csl-dosyalari/win-x64/csl-client.exe": { "dist": "cmd/csl-client/dist/win-x64/csl-client.exe", "sha256": "71fd168df56881712c0a25afcf0ef67e97168e5b92b8a6c6c89615fd7b999cfe" },
       "csl-dosyalari/win-arm64/csl-client.exe": { "dist": "cmd/csl-client/dist/win-arm64/csl-client.exe", "sha256": "4b6c2fc03cab0dcaac73c1b6847a1c7bc61112d75bdcd96e2ce864a9b2c888af" }
+    },
+    "gecko": {
+      "_doc": "ColituGecko (gecko-client, Colitu's own protocol; cmd/gecko-client of Colitu's PRIVATE repository colituvpn/colitu-gecko, not open source): built by scripts/build-sidecars.ps1 from its own pinned commit of that repository (cloning it needs access to it), with the Go toolchain above, and checked like the other sidecars. While \"commit\" is empty the Gecko code is not in a pushed commit yet: every script skips gecko-client with a warning, the installer ships without it and the app reports \"gecko-client missing\" (Gecko stays off).",
+      "repo": "https://github.com/colituvpn/colitu-gecko",
+      "commit": "e9b1e717939a3a7d1d67d394da8884869e7967bf",
+      "build": "cmd/gecko-client/build.sh",
+      "files": {
+        "gecko-dosyalari/win-x64/gecko-client.exe": { "dist": "cmd/gecko-client/dist/win-x64/gecko-client.exe", "sha256": "86294dd5bee2a05affe959ee9ed6f4e4f17bb29b213216c6c2836477c3b1736e" },
+        "gecko-dosyalari/win-arm64/gecko-client.exe": { "dist": "cmd/gecko-client/dist/win-arm64/gecko-client.exe", "sha256": "76158b516395d0226bdc8c259ca7197bb358cd77df8cf7c76788e5b1fa68a1e2" }
+      }
     }
   }
 }
