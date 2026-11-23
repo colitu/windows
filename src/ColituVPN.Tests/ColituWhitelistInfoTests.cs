@@ -14,6 +14,9 @@ namespace v2rayN.Tests;
 
 public class ColituWhitelistInfoTests
 {
+    // ColituServerRow builds pack:// flag URIs; the scheme exists only once WPF packaging is loaded.
+    static ColituWhitelistInfoTests() => _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+
     private static readonly string[] Keys = ["title", "lead", "when", "how", "note", "ok"];
 
     [Fact]
