@@ -363,7 +363,40 @@ public partial class ColituMainWindow
     // ── Updates ────────────────────────────────────────────────────────────
     private async void CheckUpdates_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync(quiet: false);
 
-    private async Task CheckForUpdatesAsync(bool quiet)
+    private ColituVpnStatus _updateLastStatus;
+    private int _afterConnectCheck;
+
+    private async void OnUpdateTimerTick()
+    {
+        if (_exiting || _updateBusy || !_updater.Schedule.IsDue(DateTimeOffset.UtcNow, ColituUpdateTrigger.Periodic))
+        {
+            return;
+        }
+        await CheckForUpdatesAsync(quiet: true, ColituUpdateTrigger.Periodic);
+    }
+
+    /// <summary>
+    /// ~30 s after a connection came up: a check that failed on the direct path may now get through
+    /// (relays, a new network). Never touches the connection itself.
+    /// </summary>
+    private async void OnStatusForUpdates(ColituVpnStatus status)
+    {
+        var was = _updateLastStatus;
+        _updateLastStatus = status;
+        if (status != ColituVpnStatus.Connected || was == ColituVpnStatus.Connected)
+        {
+            return;
+        }
+        var mine = ++_afterConnectCheck;
+        await Task.Delay(ColituUpdateSchedule.AfterConnectDelay);
+        if (mine != _afterConnectCheck || _exiting || _updateBusy || _vpn.Status != ColituVpnStatus.Connected)
+        {
+            return;
+        }
+        await CheckForUpdatesAsync(quiet: true, ColituUpdateTrigger.AfterConnect);
+    }
+
+    private async Task CheckForUpdatesAsync(bool quiet, ColituUpdateTrigger trigger = ColituUpdateTrigger.Manual)
     {
         if (_updateBusy)
         {
@@ -376,7 +409,7 @@ public partial class ColituMainWindow
         }
         try
         {
-            var update = await _updater.CheckForUpdateAsync(ignoreAttemptCache: !quiet);
+            var update = await _updater.CheckForUpdateAsync(ignoreAttemptCache: !quiet, quiet ? trigger : ColituUpdateTrigger.Manual);
             if (update == null && !quiet)
             {
                 // Offline or a rejected manifest is not "up to date".
@@ -401,8 +434,33 @@ public partial class ColituMainWindow
         UpdateButtonText.Text = Loc.I.Format("update.available", ("version", info.NewVersion));
         UpdateButton.Visibility = Visibility.Visible;
         FadeIn(UpdateButton, 6);
+        if (info.Force && !_updateBusy)
+        {
+            ShowForcedUpdate(info);
+            return;
+        }
         // Ask once per start and version; "Later" keeps the title-bar button.
         if (first && !_updateBusy)
+        {
+            ShowUpdatePrompt(info);
+        }
+    }
+
+    /// <summary>
+    /// A required update is not left in a window nobody sees: from the tray (or minimised) a Windows
+    /// notification, then the window comes forward with the update dialog. A running connection stays
+    /// up; it is only stopped when the user starts the install.
+    /// </summary>
+    private void ShowForcedUpdate(ColituUpdateInfo info)
+    {
+        if (!IsVisible || WindowState == WindowState.Minimized)
+        {
+            // Clicking this notification must not open the support chat of an earlier one.
+            _balloonOpensSupport = false;
+            TrayIcon.ShowNotification("Colitu VPN", Loc.I.Format("update.forceTray", ("version", info.NewVersion)));
+            ShowFromTray();
+        }
+        if (UpdatePrompt.Visibility != Visibility.Visible)
         {
             ShowUpdatePrompt(info);
         }

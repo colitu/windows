@@ -77,8 +77,13 @@ public sealed class ColituKillSwitch
         }
     }
 
+    /// <summary>The local networks the filters let through: none when the user blocks the local network.</summary>
+    internal static IEnumerable<(IPAddress Address, int Prefix)> PermittedLocalNetworks(bool allowLan) =>
+        allowLan ? LocalNetworks : [];
+
     /// <summary>Blocks all traffic except the listed programs and the exceptions above.</summary>
-    public void Engage(IEnumerable<string> allowedPrograms)
+    /// <param name="allowLan">false when the user chose "block the local network" (as the service does).</param>
+    public void Engage(IEnumerable<string> allowedPrograms, bool allowLan = true)
     {
         lock (_gate)
         {
@@ -132,7 +137,7 @@ public sealed class ColituKillSwitch
                     AddFilter(engine, memory, layer, 12, ActionBlock, "Block DNS outside the VPN",
                         Condition(ConditionRemotePort, MatchEqual, TypeUInt16, (IntPtr)53));
 
-                    foreach (var (address, prefix) in LocalNetworks.Where(net => (net.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6) == v6))
+                    foreach (var (address, prefix) in PermittedLocalNetworks(allowLan).Where(net => (net.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6) == v6))
                     {
                         AddFilter(engine, memory, layer, 11, ActionPermit, "Permit local network",
                             Condition(ConditionRemoteAddress, MatchEqual, v6 ? TypeV6AddrMask : TypeV4AddrMask, memory.AddressMask(address, prefix)));

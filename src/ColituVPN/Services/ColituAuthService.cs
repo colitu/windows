@@ -1172,17 +1172,23 @@ public sealed class ColituAuthService
         ColituSupportService.DeleteDownloads();
     }
 
+    /// <summary>Whether this build honours developer API overrides (debug builds only).</summary>
+    internal static bool ApiBaseOverridesEnabled =>
+#if DEBUG
+        true;
+#else
+        false;
+#endif
+
     /// <summary>The developer/staging override of the API base, null in normal use.</summary>
     private static string? ResolveApiBaseOverride()
     {
 #if DEBUG
-        // Release builds ignore the variable: a user-level variable would send the
-        // password and tokens of this elevated app to any server.
+        // Release builds ignore both overrides: a user-level variable or a config file in the
+        // app's (portable, user-writable) folder would send the password and tokens to any server.
         var env = Environment.GetEnvironmentVariable("COLITU_API_BASE_URL");
         if (!string.IsNullOrWhiteSpace(env)) return env.Trim().TrimEnd('/');
-#endif
 
-        // guiConfigs is writable by administrators only.
         var configPath = Utils.GetConfigPath("colitu-api.json");
         if (File.Exists(configPath))
         {
@@ -1200,6 +1206,7 @@ public sealed class ColituAuthService
                 // Fall through to the production API.
             }
         }
+#endif
 
         return null;
     }
@@ -1252,9 +1259,8 @@ public sealed class ColituAuthService
 
     private static string BuildDeviceName()
     {
-        var machine = string.IsNullOrWhiteSpace(Environment.MachineName) ? "Windows PC" : Environment.MachineName.Trim();
-        var user = string.IsNullOrWhiteSpace(Environment.UserName) ? null : Environment.UserName.Trim();
-        return string.IsNullOrWhiteSpace(user) ? machine : $"{machine} ({user})";
+        // Only the computer name: the Windows user name is personal data the panel does not need.
+        return string.IsNullOrWhiteSpace(Environment.MachineName) ? "Windows PC" : Environment.MachineName.Trim();
     }
 
     private static string DisplayNameFromEmail(string? email)

@@ -49,6 +49,10 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     private ColituVpnStatus _previousRunStatus;
     private readonly object _stateLock = new();
     private bool _userDisconnected;
+    /// <summary>Whether the core running now was built with sing-box strict route (TUN only).</summary>
+    private bool _coreStrictRoute;
+    /// <summary>A kill-switch-off release waits for a strict-route restart that could not run yet.</summary>
+    private int _strictReleaseRetryRunning;
     private CancellationTokenSource? _connectCts;
     private bool _otherVpnWarned;
     /// <summary>
@@ -3399,7 +3403,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
 
         if (!_session.Preferences.KillSwitchEnabled)
         {
-            await ReleaseKillSwitchAsync("kill switch turned off");
+            await ReleaseKillSwitchWithStrictRouteAsync("kill switch turned off");
         }
         else if (Status == ColituVpnStatus.Connected)
         {
@@ -4327,18 +4331,26 @@ public sealed class ColituVpnService : IColituKillSwitchControl
     /// One short check round: after a network change the transport may simply not work on the new
     /// network (a mobile operator blocking it), and the connect that follows a failure picks another.
     /// </param>
-    private async Task<bool> TryRestartCoreAsync(string reason, bool quick = false)
+    private async Task<bool> TryRestartCoreAsync(string reason, bool quick = false) =>
+        await TryRestartCoreOutcomeAsync(reason, quick) != ColituCoreRestartOutcome.Failed;
+
+    /// <summary>
+    /// Same as <see cref="TryRestartCoreAsync"/>, but tells a restart that ran apart from one that
+    /// was skipped (lock busy, not connected, cancelled): callers that need the new core must not
+    /// treat a skip as done.
+    /// </summary>
+    private async Task<ColituCoreRestartOutcome> TryRestartCoreOutcomeAsync(string reason, bool quick = false)
     {
         if (!await _connectionLock.WaitAsync(0))
         {
-            return true;
+            return ColituCoreRestartOutcome.Skipped;
         }
         var token = CancellationToken.None;
         try
         {
             if (Status != ColituVpnStatus.Connected || _userDisconnected)
             {
-                return true;
+                return ColituCoreRestartOutcome.Skipped;
             }
             // Disconnect, a server switch and Windows shutting down cancel it like a connect.
             var attempt = _connectCts = new CancellationTokenSource();
@@ -4355,11 +4367,11 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             if (token.IsCancellationRequested || _userDisconnected)
             {
                 // The user's action, waiting for the lock, takes it from here.
-                return true;
+                return ColituCoreRestartOutcome.Skipped;
             }
             if (!probe.Success)
             {
-                return false;
+                return ColituCoreRestartOutcome.Failed;
             }
             await SettleCslAsync(ConnectedServer, token);
             _failedChecks = 0;
@@ -4369,7 +4381,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
             CheckGeckoStillRunning();
             LogConnection("VPN core restarted; traffic flows again");
             Notice?.Invoke("info.reconnected");
-            return true;
+            return ColituCoreRestartOutcome.Restarted;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -4379,12 +4391,12 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 // Windows is shutting down (or the user disconnected): no core may stay behind.
                 await StopCoreAsync();
             }
-            return true;
+            return ColituCoreRestartOutcome.Skipped;
         }
         catch (Exception ex)
         {
             LogConnection($"VPN core restart failed: {ex.Message}");
-            return false;
+            return ColituCoreRestartOutcome.Failed;
         }
         finally
         {
@@ -4973,7 +4985,9 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         }
         else
         {
-            await ReleaseKillSwitchAsync("kill switch is off");
+            // Called for a tunnel that is up (or about to be): a core without strict route is
+            // restarted with it before the filters go, or the release waits for the lock.
+            await ReleaseKillSwitchWithStrictRouteAsync("kill switch is off", coreUp: true);
         }
     }
 
@@ -5054,7 +5068,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
                 Environment.ProcessPath ?? ""
             };
             programs.AddRange(apps);
-            _dynamicKillSwitch.Engage(programs);
+            _dynamicKillSwitch.Engage(programs, preferences.KillSwitchAllowLan);
             LogConnection($"Kill switch engaged in the app, without the service ({reason}); it ends if the app closes");
             WarnProxyModeOnce(tun);
             return true;
@@ -6115,6 +6129,109 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         }
     }
 
+    /// <summary>
+    /// Turning the kill switch off while connected in TUN mode: the core was started without strict
+    /// route (the WFP filters did that job), so it must be restarted with it before the filters go.
+    /// </summary>
+    internal static bool NeedsStrictRouteBeforeRelease(bool connected, bool tun, bool strictRoute, bool killSwitchEngaged) =>
+        connected && tun && !strictRoute && killSwitchEngaged;
+
+    /// <summary>
+    /// What to do with the kill switch's WFP filters after the strict-route restart was tried.
+    /// A skipped restart (another connect holds the lock, the tunnel is not up) leaves the old
+    /// non-strict core running, so the filters stay until a strict core runs.
+    /// </summary>
+    internal static ColituStrictReleaseAction DecideStrictRelease(bool restartNeeded, ColituCoreRestartOutcome outcome, bool userDisconnected) =>
+        !restartNeeded ? ColituStrictReleaseAction.Release
+        : outcome switch
+        {
+            ColituCoreRestartOutcome.Restarted => ColituStrictReleaseAction.Release,
+            ColituCoreRestartOutcome.Failed when !userDisconnected => ColituStrictReleaseAction.ReleaseAndReconnect,
+            ColituCoreRestartOutcome.Failed => ColituStrictReleaseAction.Release,
+            _ => ColituStrictReleaseAction.Defer
+        };
+
+    /// <summary>
+    /// Releases the kill switch because the user turned it off. A TUN core built without strict
+    /// route is restarted with it first while the filters still hold, so Windows never asks the
+    /// network adapter's DNS server in between. If that restart cannot run now, the filters stay
+    /// (the tunnel keeps working) and the release is retried once the connection lock is free.
+    /// </summary>
+    private async Task ReleaseKillSwitchWithStrictRouteAsync(string reason, bool? coreUp = null)
+    {
+        if (await TryReleaseKillSwitchWithStrictRouteAsync(reason, coreUp ?? Status == ColituVpnStatus.Connected) == ColituStrictReleaseAction.Defer)
+        {
+            LogConnection($"Kill switch release waits for a strict-route core restart ({reason})");
+            _ = RetryStrictReleaseAsync(reason);
+        }
+    }
+
+    private async Task<ColituStrictReleaseAction> TryReleaseKillSwitchWithStrictRouteAsync(string reason, bool coreUp)
+    {
+        var tun = _config.TunModeItem.EnableTun;
+        var restartNeeded = NeedsStrictRouteBeforeRelease(coreUp, tun, _coreStrictRoute, KillSwitchEngaged);
+        var outcome = ColituCoreRestartOutcome.Skipped;
+        if (restartNeeded)
+        {
+            _config.TunModeItem.StrictRoute = true;
+            await ConfigHandler.SaveConfig(_config);
+            outcome = await TryRestartCoreOutcomeAsync($"{reason}, strict route on", quick: true);
+        }
+        var action = DecideStrictRelease(restartNeeded, outcome, _userDisconnected);
+        switch (action)
+        {
+            case ColituStrictReleaseAction.Release:
+                await ReleaseKillSwitchAsync(reason);
+                break;
+            case ColituStrictReleaseAction.ReleaseAndReconnect:
+                // The restart did not bring traffic back: open the internet and reconnect as usual.
+                await ReleaseKillSwitchAsync(reason);
+                await OnTunnelLostAsync(fresh: true);
+                break;
+        }
+        return action;
+    }
+
+    private async Task RetryStrictReleaseAsync(string reason)
+    {
+        if (Interlocked.Exchange(ref _strictReleaseRetryRunning, 1) == 1)
+        {
+            return;
+        }
+        try
+        {
+            // About five minutes; after that the filters stay until the next connect, which builds
+            // the core with strict route and then releases them (ApplyKillSwitchForConnectedTunnelAsync).
+            for (var attempt = 0; attempt < 150; attempt++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                if (Preferences.KillSwitchEnabled || !KillSwitchEngaged)
+                {
+                    return;
+                }
+                await _connectionLock.WaitAsync();
+                _connectionLock.Release();
+                if (Status is ColituVpnStatus.Connecting or ColituVpnStatus.Reconnecting || Preferences.KillSwitchEnabled)
+                {
+                    continue;
+                }
+                if (await TryReleaseKillSwitchWithStrictRouteAsync(reason, Status == ColituVpnStatus.Connected) != ColituStrictReleaseAction.Defer)
+                {
+                    return;
+                }
+            }
+            LogConnection($"Kill switch release still waits for a strict-route restart ({reason}); it happens on the next connect");
+        }
+        catch (Exception ex)
+        {
+            LogConnection($"Kill switch release retry failed: {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _strictReleaseRetryRunning, 0);
+        }
+    }
+
     // The local network stays outside the tunnel unless the kill switch is told to block it.
     internal static bool LocalNetworkBypassed(ColituVpnPreferences preferences) =>
         !(preferences.KillSwitchEnabled && !preferences.KillSwitchAllowLan);
@@ -6399,6 +6516,7 @@ public sealed class ColituVpnService : IColituKillSwitchControl
         AppManager.Instance.LocalInboundAuth = _config.TunModeItem.EnableTun;
         LogConnection($"Building core config for profile={profileItem.IndexId}, type={profileItem.ConfigType}, outbound interface={_config.CoreBasicItem.BindInterface ?? "auto"}");
         var allResult = await CoreConfigContextBuilder.BuildAll(_config, profileItem);
+        _coreStrictRoute = _config.TunModeItem.EnableTun && _config.TunModeItem.StrictRoute;
         if (!allResult.Success)
         {
             var errors = allResult.CombinedValidatorResult.Errors;
@@ -7564,4 +7682,22 @@ public static class ColituConnectionModes
 {
     public const string Proxy = "proxy";
     public const string Tun = "tun";
+}
+
+/// <summary>Result of a same-server core restart.</summary>
+internal enum ColituCoreRestartOutcome
+{
+    Restarted,
+    /// <summary>Did not run: the connection lock was busy, the tunnel was not up, or it was cancelled.</summary>
+    Skipped,
+    Failed
+}
+
+/// <summary>What turning the kill switch off does with its filters after the strict-route restart.</summary>
+internal enum ColituStrictReleaseAction
+{
+    Release,
+    ReleaseAndReconnect,
+    /// <summary>Keep the filters: the non-strict core still runs; retry when the lock is free.</summary>
+    Defer
 }

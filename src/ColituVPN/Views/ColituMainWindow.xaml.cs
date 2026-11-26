@@ -20,6 +20,8 @@ public partial class ColituMainWindow
     private readonly DispatcherTimer _clock;
     private readonly DispatcherTimer _refresh;
     private readonly DispatcherTimer _toastTimer;
+    /// <summary>Every minute: runs the periodic update check when <see cref="ColituUpdateSchedule"/> says it is due.</summary>
+    private readonly DispatcherTimer _updateTimer;
     private bool _exiting;
     private bool _trayHintShown;
     private string _page = "home";
@@ -56,6 +58,9 @@ public partial class ColituMainWindow
             }
         });
         _updater.UpdateAvailable += info => Dispatcher.BeginInvoke(() => ShowUpdate(info));
+        _vpn.StatusChanged += status => Dispatcher.BeginInvoke(() => OnStatusForUpdates(status));
+        _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+        _updateTimer.Tick += (_, _) => OnUpdateTimerTick();
 
         _clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _clock.Tick += (_, _) => UpdateSessionTimer();
@@ -105,7 +110,9 @@ public partial class ColituMainWindow
     private async Task StartAsync()
     {
         ShowView(LoadingView);
-        _ = CheckForUpdatesAsync(quiet: true);
+        _ = CheckForUpdatesAsync(quiet: true, ColituUpdateTrigger.Startup);
+        // Not only at start: every 6 hours, 15 minutes after a failed check, and after a connection.
+        _updateTimer.Start();
         await _vpn.RecoverFromPreviousRunAsync();
         var initialize = _auth.InitializeAsync();
         // A slow or unreachable panel (common from Russia) kept the loading screen up and the
